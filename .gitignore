@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Windows / editor
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Sheets you convert, and third-party sample sheets (not redistributed)
+Converted/
+Converted_samples/
+tests/samples/*.png
