@@ -23,7 +23,7 @@ from .source_view import SourceView
 from .theme import STYLE
 
 TITLE = "RunSpriteRun Sheet Converter"
-IMAGE_FILTER = "Sprite sheets (*.png *.bmp *.gif);;All files (*)"
+IMAGE_FILTER = "Sprite sheets (*.png *.bmp *.gif *.webp);;All files (*)"
 DEBOUNCE_MS = 200
 
 
@@ -153,6 +153,7 @@ class MainWindow(OutputMixin, QMainWindow):
         self.panel.options_changed.connect(self._options_changed)
         self.panel.pick_requested.connect(self._pick_requested)
         self.panel.group_requested.connect(self._group)
+        self.panel.cleanup.changed.connect(self._cleanup_changed)
         self.output.save_clicked.connect(self.save_now)
         self.output.browse_clicked.connect(self._browse)
         self.output.tick_changed.connect(self._ticks_changed)
@@ -214,8 +215,13 @@ class MainWindow(OutputMixin, QMainWindow):
         self._serial += 1
         self._timer.stop()
         self.panel.reset_colours()
-        self.session = Session(img, path, self.panel.options())
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            self.session = Session(img, path, self.panel.options())
+        finally:
+            QApplication.restoreOverrideCursor()
         self.session.options = self.panel.options()
+        self.panel.cleanup.set_file(self.session.lossy, self.session.cleanup, self.session.colours_text())
         self.panel.set_enabled_for_sheet(True)
         self.view.set_session(self.session, self._auto_zoom(img.width))
         self.zoom_label.setText(f"{self.view.zoom}x")
@@ -224,6 +230,19 @@ class MainWindow(OutputMixin, QMainWindow):
         self.status.setText("")
         self._start_job()
         return True
+
+    def _cleanup_changed(self, strength) -> None:
+        """Clean up colours switched or its strength changed: the sheet is cleaned again and searched again."""
+        if not self.session:
+            return
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            self.session.set_cleanup(strength)
+        finally:
+            QApplication.restoreOverrideCursor()
+        self.panel.cleanup.set_note(self.session.colours_text())
+        self.view.set_session(self.session, self.view.zoom)          # show the cleaned (or original) colours
+        self._start_job()
 
     def _auto_zoom(self, width: int) -> int:
         room = max(200, self.scroll.viewport().width() - 4)

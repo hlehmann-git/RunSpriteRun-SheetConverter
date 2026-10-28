@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from PIL import Image, ImageSequence
 
+from . import colours
 from .detect import MAX_FRAME, MIN_FRAME, TRANSPARENT, Analysis, Shape, load_keys
 from .layout import SizeGroup, _fits
 
@@ -52,7 +53,12 @@ class GifSheet:
     error: str = ""
     note: str = ""                       # shown to the user, for example that the GIF was reduced to its real size
     original_size: tuple[int, int] = (0, 0)               # the GIF as it is, before any reduction
-    raw: list = field(default_factory=list)               # every frame as read (RGBA), before any reduction
+    raw: list = field(default_factory=list)               # every frame as read (RGBA, colours cleaned up if chosen)
+    raw_original: list = field(default_factory=list)      # every frame exactly as read
+    lossy: bool = False                                   # a lossy WebP (its colours are smudged)
+    cleanup: str | None = None                            # the clean-up strength in use, or None
+    colours_before: int = 0                               # solid colours as read
+    colours_after: int = 0                                # solid colours after clean-up
     scale: "ScaleInfo" = field(default_factory=lambda: ScaleInfo())
     factor: int = 1                                       # the pixel size used for `frames`
     reduce_default: bool = False                          # what the Reduce switch starts as
@@ -71,7 +77,7 @@ class GifResult:
 
 STRONG_MATCH = 0.98            # at least this share of sprite pixels agree with their block: reduce by default
 WEAK_MATCH = 0.90              # at least this: suggest the reduction, switched off (below it: treated as 1:1)
-EDGE_SHARE = 0.85              # the share of colour changes that must fall on the grid lines of a candidate size
+EDGE_SHARE = 0.75              # the share of colour changes that must fall on the grid lines of a candidate size
 MAX_FACTOR = 16                # the biggest enlargement looked for automatically (the user can pick up to 8)
 SAMPLE_FRAMES = 12             # frames looked at when detecting (all frames are reduced)
 MIN_EVIDENCE = 10              # distinct grid lines with colour changes needed, so a few plain squares never qualify
@@ -226,11 +232,13 @@ def reduce_frames(frames: list[np.ndarray], factor: int, phase: tuple[int, int])
     return out
 
 
-def read_gif(img: Image.Image, reduce: bool | None = None, pixel_size: int | None = None) -> GifSheet:
+def read_gif(img: Image.Image, reduce: bool | None = None, pixel_size: int | None = None, lossy: bool = False,
+             cleanup: str | None = "auto") -> GifSheet:
     """Read every frame and look for a whole-number enlargement. `pixel_size` None means Auto: the detected size is
     used when `reduce` is on. `reduce` None means the default: on for a strong match, and always for a GIF over 128
     pixels (it could not be used otherwise); a weaker match is only suggested. A GIF outside 4 to 128 pixels after
-    that is refused."""
+    that is refused. A lossy WebP (`lossy`) has its colours cleaned up first: `cleanup` "auto" uses the default
+    strength for a lossy file and none otherwise, None turns it off, or a strength name."""
     w, h = img.size
     sheet = GifSheet((w, h))
     sheet.original_size = (w, h)
@@ -245,13 +253,30 @@ def read_gif(img: Image.Image, reduce: bool | None = None, pixel_size: int | Non
     if not raw:
         sheet.error = "No frames were found in this picture."
         return sheet
-    sheet.raw = raw
-    sheet.scale = detect_scale(raw)
+    sheet.raw_original, sheet.lossy = raw, lossy
+    sheet.colours_before = colours.colour_count(raw)
+    if cleanup == "auto":
+        cleanup = colours.DEFAULT_STRENGTH if lossy else None
+    set_cleanup(sheet, cleanup, reduce, pixel_size)
+    return sheet
+
+
+def set_cleanup(sheet: GifSheet, cleanup: str | None, reduce: bool | None = None, pixel_size: int | None = None) -> None:
+    """Clean up the colours (or not), look for an enlargement again on the result, and rebuild the frames.
+    `reduce` None uses the default for what is found."""
+    raw = sheet.raw_original
+    if cleanup:
+        res = colours.clean_up(raw, cleanup)
+        sheet.raw, sheet.colours_after = res.frames, res.after
+    else:
+        sheet.raw, sheet.colours_after = raw, sheet.colours_before
+    sheet.cleanup = cleanup
+    w, h = sheet.original_size
+    sheet.scale = detect_scale(sheet.raw)
     too_big = w > MAX_FRAME or h > MAX_FRAME
     found = sheet.scale.factor > 1
     sheet.reduce_default = found and (too_big or sheet.scale.match >= STRONG_MATCH)
     apply_scale(sheet, sheet.reduce_default if reduce is None else reduce, pixel_size)
-    return sheet
 
 
 def apply_scale(sheet: GifSheet, reduce: bool, pixel_size: int | None = None) -> None:

@@ -49,8 +49,8 @@ class StartScreen(QMainWindow):
         lay.addSpacing(40)
         row = QHBoxLayout()
         row.addStretch()
-        self.gif_button = self._card("Convert from GIF animation",
-                                     "Turns the frames of an animated GIF into a RunSpriteRun sprite sheet.")
+        self.gif_button = self._card("Convert from GIF or WebP animation",
+                                     "Turns the frames of an animated GIF or WebP into a RunSpriteRun sprite sheet.")
         self.sheet_button = self._card("Convert from external sprite sheet",
                                        "Finds the sprites on a sheet drawn by someone else and boxes them for "
                                        "RunSpriteRun.")

@@ -6,15 +6,17 @@ from pathlib import Path
 
 from PIL import Image
 
-from ..core import gif
+from ..core import colours, gif
 from ..core.detect import rgb_of
 from ..core.gif import GifOptions, GifResult, GifSheet
 
 
 class GifSession:
-    def __init__(self, image: Image.Image, path: str | Path = ""):
+    def __init__(self, image: Image.Image, path: str | Path = "", lossy: bool | None = None):
         self.path = Path(path) if path else None
-        self.sheet: GifSheet = gif.read_gif(image)
+        if lossy is None:
+            lossy = colours.webp_kind(self.path) == "lossy" if self.path else False
+        self.sheet: GifSheet = gif.read_gif(image, lossy=lossy)
         self.reduce: bool = self.sheet.reduce_default         # the Reduce to real pixel size switch
         self.pixel_size: int | None = None                    # None = Auto (the detected size), else 1 to 8
         self.options = GifOptions()
@@ -46,6 +48,20 @@ class GifSession:
         if len(self.sheet.frames) != count:
             self.toggled = set()
         self.recompute()
+
+    def set_cleanup(self, strength: str | None) -> None:
+        """Turn colour clean-up on (a strength name) or off (None). The enlargement is looked for again."""
+        count = len(self.sheet.frames)
+        gif.set_cleanup(self.sheet, strength, None, self.pixel_size)
+        self.reduce = self.sheet.reduce_default if self.pixel_size is None else self.reduce
+        if len(self.sheet.frames) != count:
+            self.toggled = set()
+        self.recompute()
+
+    def colours_text(self) -> str:
+        sh = self.sheet
+        return colours.clean_note("lossy" if sh.lossy else "", sh.colours_before,
+                                  sh.colours_after if sh.cleanup else None, sh.cleanup)
 
     @property
     def detected_factor(self) -> int:

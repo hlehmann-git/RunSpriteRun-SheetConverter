@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QFrame, QHBoxLayout, QLabel, QPushButton, QRadioButton,
                                QSlider, QSpinBox, QVBoxLayout)
 
+from .cleanup_controls import CleanupControls
 from ..core.detect import Options, rgb_of
 
 ANALYSIS_FIELDS = ("join_gap", "min_shape", "max_shape", "remove_text", "keep_empty", "background", "cell_colour",
@@ -65,6 +66,9 @@ class AdjustPanel(QFrame):
         head.addStretch()
         lay.addLayout(head)
 
+        lay.addWidget(_section("Colours"))
+        self.cleanup = CleanupControls()
+        lay.addWidget(self.cleanup)
         lay.addWidget(_section("Box sizes"))
         self.estimate = QRadioButton("Estimate appropriate sprite box sizes")
         self.same = QRadioButton("Fit into the same size sprite box for all sprites")

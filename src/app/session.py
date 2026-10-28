@@ -6,8 +6,10 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+import numpy as np
 from PIL import Image
 
+from ..core import colours
 from ..core.detect import Analysis, Options, Shape, analyse, rgb_of
 from ..core.layout import SizeGroup, constrain, make_groups, reading_order
 
@@ -26,9 +28,18 @@ class Session:
     state is the opposite of what the program decided). Sprites you grouped by hand stay grouped a recompute as long as the
     size group they belong to still exists."""
 
-    def __init__(self, image: Image.Image, path: str | Path = "", options: Options | None = None):
-        self.image = image.convert("RGBA")
+    def __init__(self, image: Image.Image, path: str | Path = "", options: Options | None = None,
+                 lossy: bool | None = None):
+        self.original = image.convert("RGBA")                               # the sheet exactly as read
         self.path = Path(path) if path else None
+        if lossy is None:
+            lossy = colours.webp_kind(self.path) == "lossy" if self.path else False
+        self.lossy = lossy                                                  # a lossy WebP: its colours are smudged
+        self.colours_before = colours.colour_count([np.asarray(self.original)])
+        self.colours_after = self.colours_before
+        self.cleanup: str | None = None
+        self.image = self.original
+        self.set_cleanup(colours.DEFAULT_STRENGTH if lossy else None)
         self.options = options or Options()
         self.toggled: set[Box] = set()
         self.selected: set[Box] = set()
@@ -40,6 +51,22 @@ class Session:
     @property
     def stem(self) -> str:
         return self.path.stem if self.path else "sheet"
+
+    def set_cleanup(self, strength: str | None) -> None:
+        """Clean up the colours with a strength, or use them exactly as read (None). The sheet must then be
+        searched again (analyse, apply)."""
+        self.cleanup = strength
+        if strength:
+            res = colours.clean_up([np.asarray(self.original)], strength)
+            self.image = Image.fromarray(res.frames[0], "RGBA")
+            self.colours_after = res.after
+        else:
+            self.image = self.original
+            self.colours_after = self.colours_before
+
+    def colours_text(self) -> str:
+        return colours.clean_note("lossy" if self.lossy else "", self.colours_before,
+                                  self.colours_after if self.cleanup else None, self.cleanup)
 
     # ---- recompute -------------------------------------------------------------------------------------------------
     def analyse(self, options: Options | None = None) -> Analysis:

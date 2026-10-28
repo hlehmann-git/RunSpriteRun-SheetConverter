@@ -249,11 +249,11 @@ def test_an_offset_grid_and_a_plain_border_are_found():
 
 def test_a_part_block_with_sprite_pixels_becomes_a_whole_pixel():
     f = Image.new("RGB", (20, 16), (30, 60, 30))
-    for y in range(4, 10):
+    for y in range(3, 10):
         f.putpixel((0, y), (200, 40, 40))                                 # sprite pixels in the first column
-    for x, y in ((4, 4), (8, 6), (12, 8), (16, 10)):
-        for i in range(2):
-            for j in range(2):
+    for x, y in ((3, 3), (7, 6), (11, 9), (15, 4), (5, 12)):            # odd places and sizes: a true 1 px grid
+        for i in range(3):
+            for j in range(2 + (x % 4 == 3)):
                 f.putpixel((x + i, y + j), (40, 40, 200))
     frames = []
     for dx in (0, 2):
@@ -261,7 +261,7 @@ def test_a_part_block_with_sprite_pixels_becomes_a_whole_pixel():
         g.paste(f, (0, 0))
         for i in range(2):
             for j in range(2):
-                g.putpixel((10 + dx + i, 12 + j), (40, 200, 40))
+                g.putpixel((9 + dx + i, 13 + j), (40, 200, 40))
         e = g.resize((40, 32), Image.NEAREST).crop((1, 0, 40, 32))      # the left column is cut to half a block
         frames.append(e)
     s = gif.read_gif(_gif_of(frames))

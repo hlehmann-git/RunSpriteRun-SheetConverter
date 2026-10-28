@@ -16,6 +16,7 @@ from ..core.output import build_sheets
 from ..core.detect import Options
 from ..version import VERSION
 from .adjust_panel import Swatch
+from .cleanup_controls import CleanupControls
 from .frame_strip import FrameStrip
 from .gif_session import GifSession
 from .output_mixin import OutputMixin
@@ -23,7 +24,7 @@ from .output_panel import OutputPanel
 from .theme import STYLE
 
 TITLE = "RunSpriteRun Sheet Converter"
-GIF_FILTER = "GIF animations (*.gif);;All files (*)"
+GIF_FILTER = "Animations (*.gif *.webp);;All files (*)"
 
 
 def _panel() -> QFrame:
@@ -37,7 +38,7 @@ class GifWindow(OutputMixin, QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(f"GIF animation - {TITLE}")
+        self.setWindowTitle(f"GIF or WebP animation - {TITLE}")
         self.setMinimumSize(1024, 720)
         self.resize(1280, 800)
         self.setStyleSheet(STYLE)
@@ -57,10 +58,10 @@ class GifWindow(OutputMixin, QMainWindow):
         left = _panel()
         ll = QVBoxLayout(left)
         ll.setContentsMargins(10, 8, 10, 8)
-        self.title_label = QLabel("GIF animation")
+        self.title_label = QLabel("GIF or WebP animation")
         self.title_label.setObjectName("head")
         ll.addWidget(self.title_label)
-        self.hint = QLabel("Open a GIF (File, Open GIF). Click a frame to keep or drop it.")
+        self.hint = QLabel("Open a GIF or WebP animation (File, Open Animation). Click a frame to keep or drop it.")
         self.hint.setObjectName("dim")
         ll.addWidget(self.hint)
         self.strip = FrameStrip()
@@ -114,6 +115,9 @@ class GifWindow(OutputMixin, QMainWindow):
         note.setObjectName("dim")
         note.setWordWrap(True)
         rl.addWidget(note)
+        rl.addWidget(self._section("Colours"))
+        self.cleanup = CleanupControls()
+        rl.addWidget(self.cleanup)
         rl.addWidget(self._section("Frames"))
         self.repeats = QCheckBox("Remove repeated frames")
         self.repeats.setChecked(True)
@@ -158,6 +162,7 @@ class GifWindow(OutputMixin, QMainWindow):
         self.strip.pixel_picked.connect(self._pixel_picked)
         self.repeats.toggled.connect(self._options_changed)
         self.trim.toggled.connect(self._options_changed)
+        self.cleanup.changed.connect(self._cleanup_changed)
         self.reduce.toggled.connect(self._scaling_changed)
         self.pixel_size.currentIndexChanged.connect(self._scaling_changed)
         self.bg_pick.toggled.connect(self._pick_toggled)
@@ -177,7 +182,7 @@ class GifWindow(OutputMixin, QMainWindow):
         bar = self.menuBar()
         bar.setNativeMenuBar(False)
         f = bar.addMenu("File")
-        self.open_action = QAction("Open GIF...", self)
+        self.open_action = QAction("Open Animation...", self)
         self.open_action.setShortcut(QKeySequence.Open)
         self.open_action.triggered.connect(self.open_dialog)
         self.save_action = QAction("Save Sheets", self)
@@ -205,21 +210,23 @@ class GifWindow(OutputMixin, QMainWindow):
 
     # ---- opening ---------------------------------------------------------------------------------------------------
     def open_dialog(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Open GIF", self._last_dir, GIF_FILTER)
+        path, _ = QFileDialog.getOpenFileName(self, "Open Animation", self._last_dir, GIF_FILTER)
         if path:
             self.open_path(path)
 
     def open_path(self, path: str) -> bool:
         try:
             with Image.open(path) as im:
-                if im.format != "GIF":
-                    raise ValueError("This is not a GIF file.")
+                if im.format not in ("GIF", "WEBP"):
+                    raise ValueError("This is not a GIF or WebP file.")
                 session = GifSession(im, path)
         except Exception as exc:
-            QMessageBox.warning(self, TITLE, f"This file could not be opened as a GIF.\n\n{exc}")
+            QMessageBox.warning(self, TITLE, f"This file could not be opened as a GIF or WebP animation.\n\n{exc}")
             return False
         self._last_dir = str(Path(path).parent)
         self.session = session
+        self.cleanup.set_file(session.sheet.lossy, session.sheet.cleanup, session.colours_text() if session.sheet.raw
+                              else "")
         for w, set_value in ((self.reduce, lambda: self.reduce.setChecked(session.reduce)),
                              (self.pixel_size, lambda: self.pixel_size.setCurrentIndex(0))):
             w.blockSignals(True)
@@ -231,7 +238,7 @@ class GifWindow(OutputMixin, QMainWindow):
         self.hint.setText("Click a frame to keep or drop it.")
         self.setWindowTitle(f"{Path(path).name} - {TITLE}")
         ow, oh = session.sheet.original_size
-        self.title_label.setText(f"GIF animation: {Path(path).name}  ({ow} x {oh})")
+        self.title_label.setText(f"Animation: {Path(path).name}  ({ow} x {oh})")
         self._set_enabled(not session.error)
         self._refresh()
         if session.error:
@@ -284,6 +291,24 @@ class GifWindow(OutputMixin, QMainWindow):
             self.session.set_options(GifOptions(self.session.options.background, self.repeats.isChecked(),
                                                 self.trim.isChecked()))
             self._refresh()
+
+    def _cleanup_changed(self, strength) -> None:
+        if not self.session:
+            return
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QApplication
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            self.session.set_cleanup(strength)
+        finally:
+            QApplication.restoreOverrideCursor()
+        self.cleanup.set_note(self.session.colours_text())
+        self.reduce.blockSignals(True)
+        self.reduce.setChecked(self.session.reduce)
+        self.reduce.blockSignals(False)
+        self._set_enabled(not self.session.error)
+        self.strip.set_session(self.session)
+        self._refresh()
 
     def _scaling_changed(self, *_) -> None:
         if not self.session:
