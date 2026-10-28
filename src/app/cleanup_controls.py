@@ -26,7 +26,8 @@ class CleanupControls(QWidget):
         for name in STRENGTHS:
             self.strength.addItem(name, name)
         self.strength.setCurrentIndex(self.strength.findData(DEFAULT_STRENGTH))
-        self.strength.setToolTip("Low keeps more shades; High merges more, for heavily compressed files.")
+        self.strength.setToolTip("Very low keeps the most shades; Very high merges the most, for heavily compressed "
+                                 "files. Each step lets colours a little further apart merge.")
         row.addWidget(self.strength)
         lay.addLayout(row)
         self.note = QLabel("")

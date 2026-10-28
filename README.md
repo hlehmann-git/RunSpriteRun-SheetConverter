@@ -4,7 +4,7 @@ A companion program to [RunSpriteRun](https://github.com/hlehmann-git/RunSpriteR
 by someone else, and animated GIFs, into RunSpriteRun boxed sprite sheets (PNG) that RunSpriteRun can import.
 
 - **External sprite sheets (PNG, BMP, GIF, WebP):** finds the sprites, lets you remove or group them, and writes one sheet
-  per sprite size. Sheets are always used 1:1.
+  per sprite size. Sheets are always used 1:1. Sheets saved by RunSpriteRun are recognised and read box by box.
 - **Animated GIFs and WebPs:** keeps or drops frames, trims to the area that moves, and finds an animation that was enlarged,
   by a whole number (2x, 3x ...) or a fraction (such as 6.67x), so it can be reduced back to its real pixels. No new colours are ever made.
 

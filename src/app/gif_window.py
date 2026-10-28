@@ -6,7 +6,7 @@ from html import escape
 from pathlib import Path
 
 from PIL import Image
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QMainWindow,
                                QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget)
@@ -58,9 +58,23 @@ class GifWindow(OutputMixin, QMainWindow):
         left = _panel()
         ll = QVBoxLayout(left)
         ll.setContentsMargins(10, 8, 10, 8)
+        head = QHBoxLayout()
         self.title_label = QLabel("GIF or WebP animation")
         self.title_label.setObjectName("head")
-        ll.addWidget(self.title_label)
+        head.addWidget(self.title_label)
+        head.addStretch(1)
+        head.addWidget(QLabel("Zoom"))
+        self.zoom_out = QPushButton("-")
+        self.zoom_in = QPushButton("+")
+        for b in (self.zoom_out, self.zoom_in):
+            b.setFixedWidth(28)
+        self.zoom_label = QLabel("1x")
+        self.zoom_label.setMinimumWidth(32)
+        self.zoom_label.setAlignment(Qt.AlignCenter)
+        head.addWidget(self.zoom_out)
+        head.addWidget(self.zoom_label)
+        head.addWidget(self.zoom_in)
+        ll.addLayout(head)
         self.hint = QLabel("Open a GIF or WebP animation (File, Open Animation). Click a frame to keep or drop it.")
         self.hint.setObjectName("dim")
         ll.addWidget(self.hint)
@@ -165,6 +179,8 @@ class GifWindow(OutputMixin, QMainWindow):
         self._out_timer.timeout.connect(self._rebuild_output)
 
         self._build_menu()
+        self.zoom_out.clicked.connect(lambda: self._zoom(-1))
+        self.zoom_in.clicked.connect(lambda: self._zoom(+1))
         self.strip.frame_clicked.connect(self._frame_clicked)
         self.strip.pixel_picked.connect(self._pixel_picked)
         self.repeats.toggled.connect(self._options_changed)
@@ -242,6 +258,7 @@ class GifWindow(OutputMixin, QMainWindow):
         self.session.set_options(GifOptions(None, self.repeats.isChecked(), self.trim.isChecked()))
         self.bg_pick.setChecked(False)
         self.strip.set_session(session)
+        self.zoom_label.setText(self.strip.zoom_text())
         self.hint.setText("Click a frame to keep or drop it.")
         self.setWindowTitle(f"{Path(path).name} - {TITLE}")
         ow, oh = session.sheet.original_size
@@ -326,6 +343,7 @@ class GifWindow(OutputMixin, QMainWindow):
         self.reduce.blockSignals(False)
         self._set_enabled(not self.session.error)
         self.strip.set_session(self.session)
+        self.zoom_label.setText(self.strip.zoom_text())
         self._refresh()
 
     def _scaling_changed(self, *_) -> None:
@@ -334,7 +352,12 @@ class GifWindow(OutputMixin, QMainWindow):
         self.session.set_scaling(self.reduce.isChecked(), self.pixel_size.currentData())
         self._set_enabled(not self.session.error)
         self.strip.set_session(self.session)
+        self.zoom_label.setText(self.strip.zoom_text())
         self._refresh()
+
+    def _zoom(self, step: int) -> None:
+        self.strip.step_zoom(step)
+        self.zoom_label.setText(self.strip.zoom_text())
 
     def _frame_clicked(self, index: int) -> None:
         if self.session:

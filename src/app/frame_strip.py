@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QWidget
 from . import theme
 
 TARGET = 120           # a thumbnail is scaled up by a whole number (or down, when too big) to fit inside this
+MAX_ZOOM = 16          # the biggest zoom chosen with the + button
 PAD = 6
 TAG_H = 14
 
@@ -31,22 +32,54 @@ class FrameStrip(QWidget):
         super().__init__(parent)
         self.session = None
         self.zoom = 1
+        self._fitted = True                     # True until the user zooms with + or -
+        self._size = None                       # the frame size last shown
         self.picking = False
         self._images: list[QImage] = []
         self._width_hint = 600
         self.setAttribute(Qt.WA_OpaquePaintEvent)
 
     def set_session(self, session) -> None:
+        """Show a session's frames. A new file, or a frame size that changed (a new Pixel size), starts at the fitted
+        zoom; otherwise a zoom chosen with + and - is kept."""
+        new_file = session is not self.session
         self.session = session
         self._images = []
         if session and session.sheet.frames:
             w, h = session.sheet.size
-            fit = min(TARGET / w, TARGET / h, 8)
-            self.zoom = int(fit) if fit >= 1 else fit                  # a frame too big to use is shown smaller
+            if new_file or (w, h) != self._size or self._fitted:
+                self.zoom = self.fit_zoom()
+                self._fitted = True
+            self._size = (w, h)
             for f in session.sheet.frames:
                 rgba = np.ascontiguousarray(f.rgba)
                 self._images.append(QImage(rgba.data, w, h, 4 * w, QImage.Format_RGBA8888).copy())
         self._relayout()
+
+    def fit_zoom(self):
+        """The zoom a frame is first shown at: a whole number up to 8 that fits TARGET, or less than 1 when too big."""
+        w, h = self.session.sheet.size
+        fit = min(TARGET / w, TARGET / h, 8)
+        return int(fit) if fit >= 1 else fit
+
+    def step_zoom(self, step: int) -> None:
+        """One step bigger (+1) or smaller (-1), in whole numbers from 1 to MAX_ZOOM. A frame shown smaller than 1x
+        (too big to use) goes to 1x with +, and stays as it is with -."""
+        if not self._shown():
+            return
+        z = self.zoom
+        if z < 1:
+            z = 1 if step > 0 else z
+        else:
+            z = max(1, min(MAX_ZOOM, int(z) + step))
+        if z != self.zoom:
+            self.zoom = z
+            self._fitted = False
+            self._relayout()
+
+    def zoom_text(self) -> str:
+        z = self.zoom
+        return f"{z}x" if z >= 1 else f"{z:.1f}x"
 
     def set_picking(self, on: bool) -> None:
         self.picking = on
@@ -152,7 +185,10 @@ class FrameStrip(QWidget):
             return
         if self.picking:
             r = self.cell_rect(index)
-            x, y = int((pos.x() - r.left() - PAD) / self.zoom), int((pos.y() - r.top() - PAD) / self.zoom)
-            self.pixel_picked.emit(index, x, y)
+            fx, fy = pos.x() - r.left() - PAD, pos.y() - r.top() - PAD
+            w, h = self.session.sheet.size
+            x, y = int(fx // self.zoom), int(fy // self.zoom)
+            if fx >= 0 and fy >= 0 and x < w and y < h:                 # on the picture, not the gap around it
+                self.pixel_picked.emit(index, x, y)
         else:
             self.frame_clicked.emit(index)

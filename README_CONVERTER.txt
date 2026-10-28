@@ -1,4 +1,4 @@
-RunSpriteRun Sheet Converter (version 0.2.6)
+RunSpriteRun Sheet Converter (version 0.2.7)
 ============================================
 
 A separate program from RunSpriteRun. It turns two kinds of source into RunSpriteRun boxed sprite sheets (PNG):
@@ -19,9 +19,13 @@ SPRITE SHEET WINDOW
     select sprites; "Group the selected sprites into one box" puts them on one sheet whose box is the widest and tallest
     of them. Esc, or a click on empty space, clears the selection. Pick, then click a pixel, to choose the background
     or cell colour (Auto goes back to automatic).
+    A sheet saved by RunSpriteRun (or by this program) is recognised: each guide-line box is read as one sprite at
+    the box size, empty boxes are skipped, and the text at the top and the colour bar underneath are left out. Picking
+    a background or cell colour, or switching Cell colour Off, uses the normal search instead.
 
 ANIMATION WINDOW (GIF or WebP)
-    File > Open Animation (Ctrl+O). Click a frame to keep or drop it. Repeated frames are dropped for you (switch). The box
+    File > Open Animation (Ctrl+O). Zoom - and + (top right of the frames) change the size the frames are shown at;
+    a new file, or a new Pixel size, starts at the size that fits. Click a frame to keep or drop it. Repeated frames are dropped for you (switch). The box
     is trimmed to the area that moves (switch). Pick, then click a pixel in a frame, to choose the background colour.
     Pixel size: every animation is checked for pixel art that was drawn bigger, by a whole number (2x, 3x ...) or by a
     fraction (such as 2.5x or 6.67x, where blocks are alternately 6 and 7 pixels wide). The block grid may start
@@ -39,8 +43,8 @@ WEBP FILES
     art are smudged into many slightly different colours. For a lossy WebP the Colours section turns on "Clean up
     colours" for you: rare colours are merged into the main colour they are closest to (or, for a smudged edge, into
     the nearer of the two colours either side). Only colours already in the picture are used, and transparent pixels
-    stay transparent. Strength: Low keeps more shades, Medium (the default) suits most files, High merges more for
-    heavily compressed ones. The note shows the result, for example "Lossy WebP: 6099 colours, cleaned up to 11".
+    stay transparent. Strength has seven steps: Very low, Low and Medium-low keep more shades, Medium (the default)
+    suits most files, Medium-high, High and Very high merge more for heavily compressed ones. The note shows the result, for example "Lossy WebP: 6099 colours, cleaned up to 11".
     For other files the switch is greyed out: their colours are already exact.
 
 BOTH WINDOWS
@@ -50,7 +54,7 @@ BOTH WINDOWS
 
 COMMAND LINE (sprite sheets only)
     python convert_cli.py sheet.png --out Converted [--box same] [--tolerance 8] [--join-gap 3]
-    python convert_cli.py sheet.webp [--clean auto|off|low|medium|high]     (auto: Medium for a lossy WebP)
+    python convert_cli.py sheet.webp [--clean auto|off|very-low|low|medium-low|medium|medium-high|high|very-high]     (auto: Medium for a lossy WebP)
 
 TESTS
     pip install -r requirements-dev.txt PySide6

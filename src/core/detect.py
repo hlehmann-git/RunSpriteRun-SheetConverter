@@ -378,12 +378,89 @@ def _holds_only_text(s: Shape) -> bool:
 
 # ---------------------------------------------------------------------------------------------- the analysis
 
+# ---------------------------------------------------------------------------------------------- RunSpriteRun sheets
+BOXED_BAR_H = 62                       # the text bar above the boxes, on RunSpriteRun's and this program's sheets
+BOXED_GREY = key_of((224, 224, 224))   # the colour of that bar
+
+
+@dataclass
+class BoxedSheet:
+    cells: list[tuple[int, int, int, int]]     # every box's inside, x0, y0, x1, y1 inclusive, in reading order
+    width: int                                 # sprite size
+    height: int
+    line: int                                  # the guide line colour key
+    fill: int                                  # the transparent (empty box) colour key
+
+
+def _run(values: np.ndarray, colour: int) -> int:
+    """How many values from the start are `colour`."""
+    other = np.nonzero(values != colour)[0]
+    return int(other[0]) if other.size else len(values)
+
+
+def find_boxed_sheet(key: np.ndarray) -> BoxedSheet | None:
+    """A sheet made by RunSpriteRun or by this program: a grey text bar, then a grid of equal boxes divided by 1-pixel
+    guide lines, then the colour bar. None for any other sheet. The text and the colour bar are not sprites."""
+    h, w = key.shape
+    y0 = BOXED_BAR_H
+    if h < y0 + MIN_FRAME + 2 or w < MIN_FRAME + 2:
+        return None
+    if (key[:y0] == BOXED_GREY).mean() < 0.8:
+        return None
+    line = int(key[y0, 0])
+    if line in (BOXED_GREY, TRANSPARENT):
+        return None
+    gw, gh = _run(key[y0], line), _run(key[y0:, 0], line)
+    if gw < MIN_FRAME + 2 or gh < MIN_FRAME + 2:
+        return None
+    grid = key[y0:y0 + gh, :gw] == line
+    xs, ys = np.nonzero(grid.all(0))[0], np.nonzero(grid.all(1))[0]
+    if len(xs) < 2 or len(ys) < 2 or xs[0] != 0 or ys[0] != 0 or xs[-1] != gw - 1 or ys[-1] != gh - 1:
+        return None
+    dx, dy = np.diff(xs), np.diff(ys)
+    if len(set(dx.tolist())) != 1 or len(set(dy.tolist())) != 1:
+        return None
+    cw, ch = int(dx[0]) - 1, int(dy[0]) - 1
+    if not (MIN_FRAME <= cw <= MAX_FRAME and MIN_FRAME <= ch <= MAX_FRAME):
+        return None
+    cells = [(int(x) + 1, y0 + int(y) + 1, int(x) + cw, y0 + int(y) + ch) for y in ys[:-1] for x in xs[:-1]]
+    ring: Counter = Counter()                                         # the empty-box colour: commonest at box edges
+    for (x0, yy0, x1, yy1) in cells:
+        c = key[yy0:yy1 + 1, x0:x1 + 1]
+        ring.update(np.concatenate([c[0], c[-1], c[:, 0], c[:, -1]]).tolist())
+    fill = ring.most_common(1)[0][0]
+    if fill == line:
+        return None
+    return BoxedSheet(cells, cw, ch, line, int(fill))
+
+
+def _analyse_boxed(a: Analysis, sheet: BoxedSheet, opts: Options) -> Analysis:
+    a.background = sheet.fill
+    a.sheet_kinds.add("RSR")
+    for n, (x0, y0, x1, y1) in enumerate(sheet.cells, 1):
+        mask = a.key[y0:y1 + 1, x0:x1 + 1] != sheet.fill
+        s = Shape(n, (x0, y0, x1, y1), "grid", mask, int(mask.sum()), sheet.fill)
+        if not s.pixels:
+            s.removed, s.reason = (not opts.keep_empty), "empty"
+        a.shapes.append(s)
+    used = sum(1 for s in a.shapes if s.pixels)
+    a.messages.append(f"RunSpriteRun sheet recognised: {used} sprite{'s' if used != 1 else ''} of {sheet.width} x "
+                      f"{sheet.height}. The text and the colour bar are left out.")
+    if not used:
+        a.messages.append("No sprites were found: every box is empty.")
+    return a
+
+
 def analyse(img: Image.Image, opts: Options | None = None) -> Analysis:
     opts = opts or Options()
     key, had_alpha, partial = load_keys(img)
     h, w = key.shape
     bg = opts.background if opts.background is not None else detect_background(key, had_alpha)
     a = Analysis((w, h), key, bg, had_alpha=had_alpha, partial_alpha=partial)
+    if opts.background is None and opts.cell_colour is None and not opts.cells_off:
+        boxed = find_boxed_sheet(key)                       # a RunSpriteRun sheet: its boxes are the sprites
+        if boxed is not None:
+            return _analyse_boxed(a, boxed, opts)
     shapes: list[Shape] = []
 
     def add(box, kind, mask, local_bg) -> Shape:

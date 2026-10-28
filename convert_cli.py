@@ -27,7 +27,8 @@ def main(argv=None) -> int:
     p.add_argument("--vertical", default="bottom", choices=["bottom", "centre"])
     p.add_argument("--keep-empty", action="store_true")
     p.add_argument("--keep-text", action="store_true", help="do not remove text and palettes")
-    p.add_argument("--clean", default="auto", choices=["auto", "off", "low", "medium", "high"],
+    names = [n.lower().replace(" ", "-") for n in colours.STRENGTHS]
+    p.add_argument("--clean", default="auto", choices=["auto", "off"] + names,
                    help="colour clean-up for a lossy WebP (auto: Medium for a lossy WebP, off otherwise)")
     args = p.parse_args(argv)
     opts = Options(join_gap=args.join_gap, size_tolerance=args.tolerance, box_mode=args.box, vertical=args.vertical,
@@ -47,7 +48,7 @@ def main(argv=None) -> int:
         return 1
     lossy = colours.webp_kind(src) == "lossy"
     strength = (colours.DEFAULT_STRENGTH if lossy else None) if args.clean == "auto" else \
-        (None if args.clean == "off" else args.clean.capitalize())
+        (None if args.clean == "off" else colours.strength_from_text(args.clean))
     if lossy or strength:
         before = colours.colour_count([np.asarray(img.convert("RGBA"))])
         if strength:

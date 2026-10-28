@@ -230,3 +230,74 @@ def test_a_fractional_enlargement_is_offered_in_the_pixel_size_list(tmp_path, mo
     assert wait(_APP, lambda: w.output.sheets and w.output.save_button.isEnabled())
     w.close()
     w.deleteLater()
+
+
+# ---- zoom on the frame strip ------------------------------------------------------------------------------------------
+def test_the_frame_strip_zooms_like_the_sheet_view(win):
+    first = win.strip.zoom                                            # 30 x 24 frames fit at 4x
+    assert first == 4 and win.zoom_label.text() == "4x"
+    win.zoom_in.click()
+    assert win.strip.zoom == 5 and win.zoom_label.text() == "5x"
+    h5 = win.strip.cell_size().height()
+    for _ in range(20):
+        win.zoom_in.click()
+    assert win.strip.zoom == 16 and win.zoom_label.text() == "16x" and win.strip.cell_size().height() > h5
+    for _ in range(20):
+        win.zoom_out.click()
+    assert win.strip.zoom == 1 and win.zoom_label.text() == "1x"
+
+
+def test_a_chosen_zoom_is_kept_while_settings_change(win):
+    win.zoom_in.click()
+    win.zoom_in.click()
+    win.trim.setChecked(False)
+    win.repeats.setChecked(not win.repeats.isChecked())
+    win.strip.set_session(win.session)                                # the window refreshing the strip
+    assert win.strip.zoom == 6
+
+
+def test_picking_a_pixel_works_when_zoomed(win):
+    for _ in range(5):
+        win.zoom_in.click()                                           # 9x
+    win.bg_pick.click()
+    first = win.session.sheet.frames[0]
+    ys, xs = (first.key == int(first.key[3, 3])).nonzero()
+    picked = []
+    win.strip.pixel_picked.connect(lambda i, x, y: picked.append((i, x, y)))
+    QTest.mouseClick(win.strip, Qt.LeftButton, Qt.NoModifier, thumb_point(win, 0, int(xs[0]), int(ys[0])))
+    assert picked == [(0, int(xs[0]), int(ys[0]))]
+    assert win.session.options.background == int(first.key[ys[0], xs[0]])
+
+
+def test_a_new_pixel_size_goes_back_to_the_fitted_zoom(tmp_path, monkeypatch):
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
+    w = GifWindow()
+    w.show()
+    assert w.open_path(_enlarged_file(tmp_path, 3))                   # reduced to 20 x 16: fits at 6x
+    assert w.strip.zoom == 6
+    w.zoom_out.click()
+    assert w.strip.zoom == 5
+    w.reduce.setChecked(False)                                        # 60 x 48 now: fitted again
+    assert w.strip.zoom == 2 and w.zoom_label.text() == "2x"
+    w.close()
+    w.deleteLater()
+
+
+def test_frames_too_big_are_shown_smaller_and_plus_goes_to_1x(tmp_path, monkeypatch):
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
+    big = [Image.new("RGB", (300, 200), c) for c in ((200, 40, 40), (40, 200, 40))]
+    for f in big:
+        for x in range(0, 300, 7):
+            f.putpixel((x, x % 200), (250, 250, 250))
+    p = tmp_path / "big.gif"
+    big[0].save(p, "GIF", save_all=True, append_images=big[1:], duration=50, loop=0)
+    w = GifWindow()
+    w.show()
+    assert w.open_path(str(p))
+    assert w.strip.zoom == 0.4 and w.zoom_label.text() == "0.4x"
+    w.zoom_out.click()
+    assert w.strip.zoom == 0.4
+    w.zoom_in.click()
+    assert w.strip.zoom == 1 and w.zoom_label.text() == "1x"
+    w.close()
+    w.deleteLater()

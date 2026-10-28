@@ -270,3 +270,40 @@ def test_pop_up_messages_use_the_dark_theme():
     box.deleteLater()
     w.close()
     w.deleteLater()
+
+
+def test_there_are_seven_strengths_in_even_steps():
+    names = list(colours.STRENGTHS)
+    assert names == ["Very low", "Low", "Medium-low", "Medium", "Medium-high", "High", "Very high"]
+    assert [colours.STRENGTHS[n] for n in names] == [16, 24, 32, 40, 48, 56, 64]       # Low, Medium, High unchanged
+    assert colours.DEFAULT_STRENGTH == "Medium"
+    assert colours.strength_from_text("medium-high") == "Medium-high"
+    assert colours.strength_from_text("Very low") == colours.strength_from_text("very_low") == "Very low"
+    assert colours.strength_from_text("extreme") is None
+
+
+def test_each_step_up_merges_at_least_as_much_on_the_whole():
+    f = rgba(webp_bytes([art(3)], quality=60))
+    after = [colours.clean_up([f], s).after for s in colours.STRENGTHS]
+    assert after[0] > after[-1]
+    assert all(a <= min(after[:i]) + 1 for i, a in enumerate(after) if i)    # a step may keep one more, no more
+
+
+def test_the_window_lists_all_seven_strengths():
+    from PySide6.QtWidgets import QApplication
+    from src.app.cleanup_controls import CleanupControls
+    QApplication.instance() or QApplication([])
+    c = CleanupControls()
+    assert [c.strength.itemText(i) for i in range(c.strength.count())] == list(colours.STRENGTHS)
+    assert c.strength.currentData() == "Medium"
+
+
+def test_the_command_line_takes_the_new_strength_names(tmp_path, capsys):
+    import convert_cli
+    sheet = Image.new("RGBA", (300, 120), (30, 60, 30, 255))
+    for i in range(4):
+        sheet.paste(art(i).resize((64, 48), Image.NEAREST), (8 + i * 72, 30))
+    p = tmp_path / "sheet.webp"
+    p.write_bytes(webp_bytes([sheet], quality=80))
+    assert convert_cli.main([str(p), "--out", str(tmp_path / "out"), "--clean", "medium-high"]) == 0
+    assert "(Medium-high)" in capsys.readouterr().out

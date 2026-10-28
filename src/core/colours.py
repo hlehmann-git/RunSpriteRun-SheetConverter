@@ -12,12 +12,19 @@ from pathlib import Path
 
 import numpy as np
 
-STRENGTHS = {"Low": 24, "Medium": 40, "High": 56}     # how far apart (RGB distance, 0 to 441) two colours may be and merge
-BLENDS = {"Low": True, "Medium": True, "High": True}  # whether rare in-between colours (smudged edges) are merged too
+STRENGTHS = {"Very low": 16, "Low": 24, "Medium-low": 32, "Medium": 40,       # how far apart (RGB distance, 0 to 441)
+             "Medium-high": 48, "High": 56, "Very high": 64}                 # two colours may be and still merge
+BLENDS = {name: True for name in STRENGTHS}           # whether rare in-between colours (smudged edges) are merged too
 EDGE_ONLY = 0.3                                       # a blend has fewer than this share of pixels inside a patch of its colour
 RARE = 0.005                                          # a colour on fewer than this share of pixels may be an edge blend
 MAX_ROUNDS = 1024                                     # the most extra colours kept as real detail
 DEFAULT_STRENGTH = "Medium"
+
+
+def strength_from_text(text: str) -> str | None:
+    """The strength named by `text` ("medium-high", "Very low", "very_low" ...), or None for a name that is not one."""
+    want = text.strip().lower().replace("_", " ").replace("-", " ")
+    return next((n for n in STRENGTHS if n.lower().replace("-", " ") == want), None)
 
 
 def webp_kind(source: str | Path | bytes) -> str:
