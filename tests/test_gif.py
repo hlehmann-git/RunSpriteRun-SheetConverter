@@ -111,7 +111,7 @@ def test_a_gif_over_128_pixels_is_refused_and_nothing_is_scaled():
     big.save(buf, "GIF")
     buf.seek(0)
     s = gif.read_gif(Image.open(buf))
-    assert s.error == "Frames are 129 x 20. Sprite sizes must be 4 to 128 pixels." and not s.frames
+    assert s.error == "Frames are 129 x 20. Sprite sizes must be 4 to 128 pixels." and s.too_big           # the frames are still shown
     assert gif.build(s, GifOptions()).message == s.error
 
 
@@ -189,7 +189,7 @@ def test_the_largest_whole_number_is_used():
 
 def test_an_enlarged_gif_that_is_still_too_big_underneath_is_refused():
     s = gif.read_gif(enlarged(2, size=(130, 40)))                     # 260 x 80: underneath it is 130 wide
-    assert s.error and "260 x 80" in s.error and "4 to 128" in s.error and not s.frames
+    assert s.error and "260 x 80" in s.error and "4 to 128" in s.error and s.too_big           # the frames are still shown
 
 
 def _gif_of(frames):
@@ -221,7 +221,7 @@ def test_a_big_gif_that_is_not_an_enlargement_is_still_refused():
     rng = np.random.default_rng(1)
     noise = [Image.fromarray(rng.integers(0, 255, (128, 160, 3), dtype=np.uint8), "RGB") for _ in range(2)]
     s = gif.read_gif(_gif_of(noise))
-    assert s.error == "Frames are 160 x 128. Sprite sizes must be 4 to 128 pixels." and not s.frames
+    assert s.error == "Frames are 160 x 128. Sprite sizes must be 4 to 128 pixels." and s.too_big           # the frames are still shown
     assert s.scale.factor == 1
 
 

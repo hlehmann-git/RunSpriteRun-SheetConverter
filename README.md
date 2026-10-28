@@ -5,8 +5,8 @@ by someone else, and animated GIFs, into RunSpriteRun boxed sprite sheets (PNG) 
 
 - **External sprite sheets (PNG, BMP, GIF, WebP):** finds the sprites, lets you remove or group them, and writes one sheet
   per sprite size. Sheets are always used 1:1.
-- **Animated GIFs and WebPs:** keeps or drops frames, trims to the area that moves, and finds a GIF that was enlarged by a
-  whole number (2x, 3x ...) so it can be reduced back to its real pixels. No new colours are ever made.
+- **Animated GIFs and WebPs:** keeps or drops frames, trims to the area that moves, and finds an animation that was enlarged,
+  by a whole number (2x, 3x ...) or a fraction (such as 6.67x), so it can be reduced back to its real pixels. No new colours are ever made.
 
 Colours are kept exactly as in the source; RunSpriteRun checks them against your chosen system when you import.
 A lossy WebP, whose colours are smudged by compression, can have them cleaned up back to a small palette, using

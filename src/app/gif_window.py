@@ -21,7 +21,7 @@ from .frame_strip import FrameStrip
 from .gif_session import GifSession
 from .output_mixin import OutputMixin
 from .output_panel import OutputPanel
-from .theme import STYLE
+from .theme import ORANGE, STYLE
 
 TITLE = "RunSpriteRun Sheet Converter"
 GIF_FILTER = "Animations (*.gif *.webp);;All files (*)"
@@ -126,9 +126,15 @@ class GifWindow(OutputMixin, QMainWindow):
         rl.addWidget(self.repeats)
         rl.addWidget(self.trim)
         rl.addWidget(self._section("Pixel size"))
+        self.pixel_box = QFrame()                       # outlined in orange while the frames are too big to use
+        self.pixel_box.setObjectName("pixelbox")
+        pl = QVBoxLayout(self.pixel_box)
+        pl.setContentsMargins(6, 4, 6, 4)
+        pl.setSpacing(3)
         self.reduce = QCheckBox("Reduce to real pixel size")
-        self.reduce.setToolTip("Shrink a GIF that was enlarged by a whole number (2x, 3x ...) back to its real pixels")
-        rl.addWidget(self.reduce)
+        self.reduce.setToolTip("Shrink a picture that was enlarged (2x, 3x, or by a fraction such as 6.67x) back to "
+                               "its real pixels")
+        pl.addWidget(self.reduce)
         row = QHBoxLayout()
         row.addWidget(QLabel("Pixel size"), 1)
         self.pixel_size = QComboBox()
@@ -137,11 +143,12 @@ class GifWindow(OutputMixin, QMainWindow):
             self.pixel_size.addItem(f"{n}x", n)
         self.pixel_size.setToolTip("Auto uses the detected size. Choose a size by hand if Auto is wrong.")
         row.addWidget(self.pixel_size)
-        rl.addLayout(row)
+        pl.addLayout(row)
         self.scale_label = QLabel("")
         self.scale_label.setObjectName("dim")
         self.scale_label.setWordWrap(True)
-        rl.addWidget(self.scale_label)
+        pl.addWidget(self.scale_label)
+        rl.addWidget(self.pixel_box)
         lim = QLabel("Frames must be 4 to 128 pixels each way after any reduction. Each new pixel takes the most "
                      "common colour of its block, so no new colours appear.")
         lim.setObjectName("dim")
@@ -228,7 +235,7 @@ class GifWindow(OutputMixin, QMainWindow):
         self.cleanup.set_file(session.sheet.lossy, session.sheet.cleanup, session.colours_text() if session.sheet.raw
                               else "")
         for w, set_value in ((self.reduce, lambda: self.reduce.setChecked(session.reduce)),
-                             (self.pixel_size, lambda: self.pixel_size.setCurrentIndex(0))):
+                             (self.pixel_size, lambda: self._fill_pixel_sizes(session))):
             w.blockSignals(True)
             set_value()
             w.blockSignals(False)
@@ -241,25 +248,36 @@ class GifWindow(OutputMixin, QMainWindow):
         self.title_label.setText(f"Animation: {Path(path).name}  ({ow} x {oh})")
         self._set_enabled(not session.error)
         self._refresh()
-        if session.error:
-            QMessageBox.warning(self, TITLE, f"This GIF cannot be converted as it is.\n\n{session.error}\n\n"
-                                "If it is a smaller picture enlarged by a whole number, choose that Pixel size "
-                                "(2x, 3x ...). A GIF enlarged by a fraction such as 2.5x cannot be reduced cleanly.")
-        return True
+        if session.error and not session.sheet.raw:                  # the frames could not be read at all
+            QMessageBox.warning(self, TITLE, f"This picture cannot be converted.\n\n{session.error}")
+        return True                                                  # too big: shown in the window, with what to do
+
+    def _fill_pixel_sizes(self, session) -> None:
+        """Auto, the detected fractional size (if any), then 1x to 8x."""
+        self.pixel_size.clear()
+        self.pixel_size.addItem("Auto", None)
+        choice = session.grid_choice()
+        if choice:
+            self.pixel_size.addItem(*choice)
+        for n in range(1, 9):
+            self.pixel_size.addItem(f"{n}x", n)
 
     def _set_enabled(self, on: bool) -> None:
         for w in (self.bg_pick, self.bg_auto, self.repeats, self.trim):
             w.setEnabled(on)
         has = self.session is not None and bool(self.session.sheet.raw)
         self.pixel_size.setEnabled(has)
-        self.reduce.setEnabled(has and self.session.detected_factor > 1 and self.pixel_size.currentData() is None)
+        self.reduce.setEnabled(has and self.session.found and self.pixel_size.currentData() is None)
+        warn = has and self.session.sheet.too_big
+        self.pixel_box.setStyleSheet(f"QFrame#pixelbox {{ border: 2px solid {ORANGE}; border-radius: 6px; }}" if warn
+                                     else "QFrame#pixelbox { border: none; }")
 
     # ---- redraw ----------------------------------------------------------------------------------------------------
     def _refresh(self) -> None:
         s = self.session
         if not s:
             return
-        self.error_label.setText(s.error or s.result.message or s.sheet.note)
+        self.error_label.setText(s.problem_text() or s.result.message or s.sheet.note)
         self.scale_label.setText(s.scale_text() if s.sheet.raw else "")
         self.summary.setText("" if s.error else s.summary())
         self.box_label.setText("" if s.error or s.result.message else s.box_text())

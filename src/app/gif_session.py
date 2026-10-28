@@ -67,14 +67,48 @@ class GifSession:
     def detected_factor(self) -> int:
         return self.sheet.scale.factor
 
+    @property
+    def found(self) -> bool:
+        """An enlargement (whole or fractional) was detected."""
+        return self.sheet.scale.found
+
+    def grid_choice(self):
+        """The Pixel size list entry for a detected fractional size: (text, data), or None."""
+        sc, (w, h) = self.sheet.scale, self.sheet.original_size
+        if sc.grid is None:
+            return None
+        return f"{sc.grid[0]} x {sc.grid[1]} ({gif.ratio_text(w / sc.grid[0])})", ("grid", *sc.grid)
+
     def scale_text(self) -> str:
         """One line for the Pixel size section."""
-        sc, w, h = self.sheet.scale, *self.sheet.original_size
-        if sc.factor == 1:
-            return f"No enlargement found: the GIF is used at {w} x {h}, one pixel per pixel."
+        sc, (w, h) = self.sheet.scale, self.sheet.original_size
+        if not sc.found:
+            return f"No enlargement found: the picture is used at {w} x {h}, one pixel per pixel."
         pct = f"{sc.match * 100:.1f}".rstrip("0").rstrip(".")
-        sw, sh = (w - sc.phase[0]) // sc.factor, (h - sc.phase[1]) // sc.factor
-        return f"Detected: {sc.factor}x enlargement of about {sw} x {sh} ({pct}% match)."
+        if sc.grid:
+            sw, sh = sc.grid
+            how = gif.ratio_text(w / sw)
+        else:
+            sw, sh = (w - sc.phase[0]) // sc.factor, (h - sc.phase[1]) // sc.factor
+            how = f"{sc.factor}x"
+        return f"Detected: {how} enlargement of about {sw} x {sh} ({pct}% match)."
+
+    def problem_text(self) -> str:
+        """What is wrong and what to do, when the frames cannot be used as they are (else '')."""
+        sh = self.sheet
+        if not sh.error:
+            return ""
+        if not sh.too_big:
+            return sh.error
+        w, h = sh.size
+        if self.found and not self.reduce and self.pixel_size is None:
+            todo = "Tick Reduce to real pixel size below."
+        elif self.found:
+            todo = "Choose Auto in Pixel size below to use the detected size."
+        else:
+            todo = ("No enlargement was found. If it is pixel art drawn bigger, choose its size in Pixel size below; "
+                    "otherwise make the picture smaller before converting it.")
+        return f"Too big to use as it is: frames are {w} x {h}, and sprites can be 4 to 128 pixels. {todo}"
 
     def toggle_frame(self, index: int) -> None:
         """Click on a frame: drop it if it is kept, keep it if it is dropped."""

@@ -98,7 +98,7 @@ def test_save_writes_the_sheet_and_replace_is_asked(win, tmp_path, monkeypatch):
     assert asked == [1] and win.output.saved.text() == "Nothing was saved."
 
 
-def test_a_gif_larger_than_128_is_refused_and_nothing_can_be_saved(tmp_path, monkeypatch):
+def test_a_gif_larger_than_128_shows_its_frames_and_says_what_to_do(tmp_path, monkeypatch):
     seen = []
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: seen.append(a[2]))
     big = Image.new("RGB", (130, 40), (20, 20, 20))
@@ -109,9 +109,12 @@ def test_a_gif_larger_than_128_is_refused_and_nothing_can_be_saved(tmp_path, mon
     w = GifWindow()
     w.show()
     assert w.open_path(str(p))
-    assert "Frames are 130 x 40. Sprite sizes must be 4 to 128 pixels." in w.error_label.text()
-    assert seen and "cannot be converted" in seen[0] and "Frames are 130 x 40" in seen[0]      # a pop-up, not just a line
-    assert not w.repeats.isEnabled()
+    assert not seen                                                    # no pop-up: it is explained in the window
+    text = w.error_label.text()
+    assert text.startswith("Too big to use as it is: frames are 130 x 40") and "Pixel size below" in text
+    assert w.strip._images and w.strip.height() > 20                   # the frames are still shown
+    assert "orange" in w.pixel_box.styleSheet().lower() or "#ffa03c" in w.pixel_box.styleSheet().lower()
+    assert w.pixel_size.isEnabled() and not w.repeats.isEnabled()
     assert wait(_APP, lambda: "Frames are 130 x 40" in w.output.messages.text())
     assert not w.output.save_button.isEnabled() and not w.save_action.isEnabled()
     w.close()
@@ -204,3 +207,26 @@ def test_the_reduce_switch_and_pixel_size_rebuild_the_frames(tmp_path, monkeypat
 def test_a_plain_gif_has_the_reduce_switch_greyed_out(win):
     assert not win.reduce.isEnabled() and win.pixel_size.isEnabled()
     assert "No enlargement found" in win.scale_label.text()
+
+
+def test_a_fractional_enlargement_is_offered_in_the_pixel_size_list(tmp_path, monkeypatch):
+    from tests.test_webp import art
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
+    frames = [art(s, scale=1).convert("RGB").resize((224, 168), Image.NEAREST) for s in (1, 2, 3)]   # 3.5x of 64 x 48
+    p = tmp_path / "frac.gif"
+    frames[0].save(p, "GIF", save_all=True, append_images=frames[1:], duration=50, loop=0, disposal=2)
+    w = GifWindow()
+    w.show()
+    assert w.open_path(str(p))
+    assert w.pixel_size.itemText(1) == "64 x 48 (3.5x)" and w.pixel_size.itemData(1) == ("grid", 64, 48)
+    assert w.session.sheet.size == (64, 48) and w.reduce.isChecked()
+    assert "3.5x enlargement of 64 x 48" in w.error_label.text()
+    assert "#ffa03c" not in w.pixel_box.styleSheet().lower()          # nothing to fix
+    w.reduce.setChecked(False)                                        # back to 224 x 168: too big again
+    assert w.session.sheet.too_big and "Tick Reduce to real pixel size" in w.error_label.text()
+    assert "#ffa03c" in w.pixel_box.styleSheet().lower()
+    w.pixel_size.setCurrentIndex(1)                                   # the detected size, chosen by hand
+    assert w.session.sheet.size == (64, 48) and not w.session.sheet.too_big
+    assert wait(_APP, lambda: w.output.sheets and w.output.save_button.isEnabled())
+    w.close()
+    w.deleteLater()

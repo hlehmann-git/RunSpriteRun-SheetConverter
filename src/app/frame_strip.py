@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QWidget
 
 from . import theme
 
-TARGET = 120           # a thumbnail is scaled up by a whole number to fit inside this
+TARGET = 120           # a thumbnail is scaled up by a whole number (or down, when too big) to fit inside this
 PAD = 6
 TAG_H = 14
 
@@ -39,9 +39,10 @@ class FrameStrip(QWidget):
     def set_session(self, session) -> None:
         self.session = session
         self._images = []
-        if session and not session.error:
+        if session and session.sheet.frames:
             w, h = session.sheet.size
-            self.zoom = max(1, min(TARGET // w, TARGET // h, 8))
+            fit = min(TARGET / w, TARGET / h, 8)
+            self.zoom = int(fit) if fit >= 1 else fit                  # a frame too big to use is shown smaller
             for f in session.sheet.frames:
                 rgba = np.ascontiguousarray(f.rgba)
                 self._images.append(QImage(rgba.data, w, h, 4 * w, QImage.Format_RGBA8888).copy())
@@ -52,11 +53,14 @@ class FrameStrip(QWidget):
         self.setCursor(Qt.CrossCursor if on else Qt.ArrowCursor)
 
     # ---- layout ----------------------------------------------------------------------------------------------------
+    def _shown(self) -> bool:
+        return bool(self.session and self.session.sheet.frames)
+
     def cell_size(self) -> QSize:
-        if not self.session or self.session.error:
+        if not self._shown():
             return QSize(10, 10)
         w, h = self.session.sheet.size
-        return QSize(w * self.zoom + 2 * PAD, h * self.zoom + 2 * PAD + TAG_H)
+        return QSize(round(w * self.zoom) + 2 * PAD, round(h * self.zoom) + 2 * PAD + TAG_H)
 
     def columns(self, width: int | None = None) -> int:
         return max(1, ((width or self.width() or self._width_hint)) // self.cell_size().width())
@@ -66,7 +70,7 @@ class FrameStrip(QWidget):
         return QRect((index % c) * cs.width(), (index // c) * cs.height(), cs.width(), cs.height())
 
     def _relayout(self, width: int | None = None) -> None:
-        n = len(self.session.sheet.frames) if self.session and not self.session.error else 0
+        n = len(self.session.sheet.frames) if self._shown() else 0
         cs = self.cell_size()
         cols = self.columns(width)
         rows = max(1, -(-n // cols))
@@ -79,7 +83,7 @@ class FrameStrip(QWidget):
         super().resizeEvent(event)
 
     def heightForWidth(self, w: int) -> int:
-        n = len(self.session.sheet.frames) if self.session and not self.session.error else 0
+        n = len(self.session.sheet.frames) if self._shown() else 0
         return max(1, -(-n // self.columns(w))) * self.cell_size().height()
 
     # ---- painting --------------------------------------------------------------------------------------------------
@@ -87,10 +91,11 @@ class FrameStrip(QWidget):
         p = QPainter(self)
         p.fillRect(event.rect(), QColor(theme.VIEW))
         s = self.session
-        if not s or s.error or not self._images:
+        if not s or not self._shown() or not self._images:
             return
         w, h = s.sheet.size
         z = self.zoom
+        dw, dh = round(w * z), round(h * z)
         font = QFont(self.font())
         font.setPixelSize(11)
         p.setFont(font)
@@ -100,14 +105,16 @@ class FrameStrip(QWidget):
             r = self.cell_rect(f.index)
             if not r.intersects(event.rect()):
                 continue
-            pic = QRect(r.left() + PAD, r.top() + PAD, w * z, h * z)
-            p.drawImage(pic, checker(w * z, h * z))
+            pic = QRect(r.left() + PAD, r.top() + PAD, dw, dh)
+            p.drawImage(pic, checker(dw, dh))
             p.drawImage(pic, self._images[f.index])
-            if f.index in kept:
+            if s.error:                                             # too big to use: shown as it is, nothing to click
+                label, colour = str(f.index + 1), QColor(150, 150, 150)
+            elif f.index in kept:
                 if box is not None and (box[2] - box[0] + 1, box[3] - box[1] + 1) != (w, h):
                     p.setPen(QPen(QColor(80, 220, 255), 1))
-                    p.drawRect(QRect(pic.left() + box[0] * z, pic.top() + box[1] * z,
-                                     (box[2] - box[0] + 1) * z - 1, (box[3] - box[1] + 1) * z - 1))
+                    p.drawRect(QRect(pic.left() + round(box[0] * z), pic.top() + round(box[1] * z),
+                                     round((box[2] - box[0] + 1) * z) - 1, round((box[3] - box[1] + 1) * z) - 1))
                 label, colour = str(f.index + 1), QColor(255, 160, 60)
             else:
                 p.fillRect(pic, QColor(20, 20, 24, 170))
@@ -127,7 +134,7 @@ class FrameStrip(QWidget):
     # ---- mouse -----------------------------------------------------------------------------------------------------
     def _frame_at(self, pos: QPoint):
         s = self.session
-        if not s or s.error:
+        if not s or s.error or not self._shown():
             return None
         cs = self.cell_size()
         col, row = pos.x() // cs.width(), pos.y() // cs.height()
@@ -145,7 +152,7 @@ class FrameStrip(QWidget):
             return
         if self.picking:
             r = self.cell_rect(index)
-            x, y = (pos.x() - r.left() - PAD) // self.zoom, (pos.y() - r.top() - PAD) // self.zoom
+            x, y = int((pos.x() - r.left() - PAD) / self.zoom), int((pos.y() - r.top() - PAD) / self.zoom)
             self.pixel_picked.emit(index, x, y)
         else:
             self.frame_clicked.emit(index)

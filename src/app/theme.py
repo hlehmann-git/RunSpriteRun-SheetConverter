@@ -28,6 +28,7 @@ QPushButton:hover {{ border-color: #b4bdd6; }}
 QPushButton:checked {{ background: #b4bdd6; color: #14151a; border-color: #ffffff; }}
 QPushButton:disabled {{ color: #6a6e7c; border-color: #4a4e5c; }}
 QPushButton#primary {{ background: {ACCENT}; border-color: #9cc2f5; color: white; font-size: 13px; padding: 7px 18px; }}
+QPushButton#primary:disabled {{ background: #3a3e4a; border-color: #4a4e5c; color: #7a7e8c; }}
 QSpinBox, QComboBox {{ background: #1b1c21; border: 1px solid #5a5f72; border-radius: 3px; padding: 2px 5px; }}
 QComboBox QAbstractItemView {{ background: #26262c; selection-background-color: {ACCENT}; }}
 QSlider::groove:horizontal {{ height: 4px; background: #3d4050; border-radius: 2px; }}
