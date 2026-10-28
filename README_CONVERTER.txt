@@ -1,4 +1,4 @@
-RunSpriteRun Sheet Converter (version 0.2.3)
+RunSpriteRun Sheet Converter (version 0.2.4)
 ============================================
 
 A separate program from RunSpriteRun. It turns two kinds of source into RunSpriteRun boxed sprite sheets (PNG):

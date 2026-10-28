@@ -249,3 +249,24 @@ def test_the_command_line_cleans_up_a_lossy_webp(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "Lossy WebP" in out and "cleaned up to" in out
     assert list((tmp_path / "out").glob("sheet_RSR_*.png"))
+
+
+def test_pop_up_messages_use_the_dark_theme():
+    """A message box opened from a window has the dark panel colour behind light text (not white behind grey)."""
+    from PySide6.QtGui import QPalette
+    from src.app.gif_window import GifWindow
+    from src.app.theme import PANEL
+    from tests.test_window import _APP
+    w = GifWindow()
+    w.show()
+    box = QMessageBox(QMessageBox.Warning, "t", "Some text", QMessageBox.Ok, w)
+    box.show()
+    _APP.processEvents()
+    img = box.grab().toImage()
+    c = img.pixelColor(img.width() - 5, img.height() // 2)
+    assert c.lightness() < 80                                   # dark, not the system white
+    assert box.palette().color(QPalette.WindowText).lightness() > 180
+    box.close()
+    box.deleteLater()
+    w.close()
+    w.deleteLater()

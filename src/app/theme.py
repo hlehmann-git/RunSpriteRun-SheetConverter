@@ -39,4 +39,7 @@ QTabBar::tab {{ background: #33343d; color: {DIM}; border: 1px solid {LINE}; bor
 QTabBar::tab:selected {{ background: #3d4a66; color: white; border-color: {ACCENT}; }}
 QTabBar QToolButton {{ background: {BUTTON}; border: 1px solid #7a8094; }}
 QToolTip {{ background: #26262c; color: {TEXT}; border: 1px solid {LINE}; }}
+QMessageBox, QDialog {{ background: {PANEL}; color: {TEXT}; }}
+QMessageBox QLabel {{ color: {TEXT}; }}
+QMessageBox QPushButton {{ min-width: 72px; padding: 4px 12px; }}
 """
