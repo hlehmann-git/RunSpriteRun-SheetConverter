@@ -50,6 +50,7 @@ class Shape:
     removed: bool = False
     reason: str = ""                   # why it was removed: text, palette, picture, empty
     row: int = 0
+    parts: list = field(default_factory=list)   # for pieces merged into one sprite: the pieces (Split brings them back)
 
     @property
     def width(self) -> int:
@@ -349,6 +350,43 @@ def is_palette(key: np.ndarray, box: tuple[int, int, int, int], mask: np.ndarray
     return True
 
 
+def boxes_overlap(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool:
+    return a[0] <= b[2] and b[0] <= a[2] and a[1] <= b[3] and b[1] <= a[3]
+
+
+def merge_shapes(pieces: list[Shape]) -> Shape:
+    """One sprite made of several pieces: its box covers them all and its pixels are theirs. The pieces are kept in
+    `parts`, so Split can bring them back."""
+    x0 = min(p.box[0] for p in pieces)
+    y0 = min(p.box[1] for p in pieces)
+    x1 = max(p.box[2] for p in pieces)
+    y1 = max(p.box[3] for p in pieces)
+    mask = np.zeros((y1 - y0 + 1, x1 - x0 + 1), bool)
+    originals = []
+    for p in pieces:
+        mask[p.box[1] - y0:p.box[3] - y0 + 1, p.box[0] - x0:p.box[2] - x0 + 1] |= p.mask
+        originals.extend(p.parts or [p])
+    first = min(pieces, key=lambda p: (p.box[1], p.box[0]))
+    return Shape(first.id, (x0, y0, x1, y1), "sprite", mask, int(mask.sum()), first.bg, parts=originals)
+
+
+def merge_overlapping(shapes: list[Shape]) -> list[Shape]:
+    """Sprites whose boxes overlap are one sprite (pieces of an effect, such as sparkles, that do not touch): they are
+    merged, again and again until no two boxes overlap. Returns the new list."""
+    out = list(shapes)
+    changed = True
+    while changed:
+        changed = False
+        for i in range(len(out)):
+            group = [out[i]] + [o for o in out[i + 1:] if boxes_overlap(out[i].box, o.box)]
+            if len(group) > 1:
+                merged = merge_shapes(group)
+                out = [o for o in out if all(o is not g for g in group)] + [merged]
+                changed = True
+                break
+    return out
+
+
 def _remove_words(key: np.ndarray, shapes: list[Shape]) -> None:
     """Words that the letter test missed (letters that touch): small shapes in one or two colours that stand in a line
     with other such shapes are text."""
@@ -576,6 +614,13 @@ def analyse(img: Image.Image, opts: Options | None = None) -> Analysis:
             a.sheet_kinds.add("B")
         if opts.remove_text:
             _remove_words(key, [s for s in shapes if s.kind == "sprite" and not s.removed])
+        loose_kept = [s for s in shapes if s.kind == "sprite" and not s.removed]
+        merged = merge_overlapping(loose_kept)                  # overlapping boxes: one sprite
+        if len(merged) != len(loose_kept):
+            shapes[:] = [s for s in shapes if not (s.kind == "sprite" and not s.removed)] + merged
+            for s in merged:
+                if s.parts and (s.width > opts.max_shape or s.height > opts.max_shape):
+                    s.removed, s.reason = True, "picture"
         for b in removed_text_boxes:
             s = add(tuple(b), "sprite", np.ones((b[3] - b[1] + 1, b[2] - b[0] + 1), bool), bg)
             s.removed, s.reason = True, "text"
@@ -609,6 +654,8 @@ def analyse(img: Image.Image, opts: Options | None = None) -> Analysis:
         if s.kind in ("cell", "grid") and s.pixels == 0:
             s.removed, s.reason = (not opts.keep_empty), "empty"
     # cells that hold nothing but text are left to the user
+    for i, s in enumerate(shapes, 1):
+        s.id = i
     a.shapes = shapes
     if not any(not s.removed for s in shapes):
         a.messages.append("No sprites were found. Check the background colour.")

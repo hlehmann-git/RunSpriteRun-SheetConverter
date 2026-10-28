@@ -10,7 +10,7 @@ import numpy as np
 from PIL import Image
 
 from ..core import colours
-from ..core.detect import Analysis, Options, Shape, analyse, rgb_of
+from ..core.detect import Analysis, Options, Shape, analyse, merge_shapes, rgb_of
 from ..core.layout import SizeGroup, constrain, make_groups, reading_order
 
 Box = tuple[int, int, int, int]
@@ -44,6 +44,8 @@ class Session:
         self.toggled: set[Box] = set()
         self.selected: set[Box] = set()
         self.moves: dict[Box, tuple[int, int]] = {}                         # sprite -> the size of the group it was put in by hand
+        self.merges: list[Box] = []          # areas whose pieces the user merged into one sprite (kept when re-searched)
+        self.splits: list[Box] = []          # merged sprites the user split again (not merged on a re-search)
         self.analysis: Analysis | None = None
         self.groups: list[SizeGroup] = []
         self.message = ""                                                   # the last refusal, for the window to show
@@ -77,6 +79,7 @@ class Session:
         if options is not None:
             self.options = options
         self.analysis = analysis
+        self._apply_splits_and_merges()
         for s in analysis.shapes:
             if s.box in self.toggled:
                 s.removed = not s.removed
@@ -84,6 +87,30 @@ class Session:
         boxes = {s.box for s in analysis.kept()}
         self.selected &= boxes
         self.regroup()
+
+    def _apply_splits_and_merges(self) -> None:
+        """After a (re-)search: sprites the user split stay split, pieces the user merged are merged again."""
+        a = self.analysis
+        for area in self.splits:
+            for m in [x for x in a.shapes if x.parts and _inside(x.box, area)]:
+                self._replace(m, m.parts)
+        for area in self.merges:
+            inside = [x for x in a.kept() if _inside(x.box, area)]
+            if len(inside) > 1:
+                self._replace_many(inside, merge_shapes(inside))
+
+    def _replace(self, old: Shape, new: list[Shape]) -> None:
+        i = next(n for n, x in enumerate(self.analysis.shapes) if x is old)
+        for x in new:
+            x.removed, x.reason = False, ""
+        self.analysis.shapes[i:i + 1] = new
+
+    def _replace_many(self, old: list[Shape], new: Shape) -> None:
+        shapes = self.analysis.shapes
+        i = min(n for n, x in enumerate(shapes) if any(x is o for o in old))
+        rest = [x for x in shapes if all(x is not o for o in old)]
+        rest.insert(min(i, len(rest)), new)
+        shapes[:] = rest
 
     def regroup(self) -> None:
         a = self.analysis
@@ -133,7 +160,7 @@ class Session:
         parts = [f"{g.count} frame{'s' if g.count != 1 else ''} of {g.width} x {g.height}" for g in self.groups]
         total = sum(g.count for g in self.groups)
         n = self.removed_count()
-        tail = f"{total} frames" + (f", {n} shape{'s' if n != 1 else ''} removed (red cross)" if n else "")
+        tail = f"{total} frames" + (f", {n} shape{'s' if n != 1 else ''} removed" if n else "")
         return ", ".join(parts) + "  -  " + tail
 
     def background_text(self) -> str:
@@ -142,12 +169,15 @@ class Session:
         b = self.analysis.background
         return "Transparent" if b < 0 else "#%02X%02X%02X" % rgb_of(b)
 
-    def shape_at(self, x: int, y: int) -> Shape | None:
-        """The smallest shape (kept or removed) whose rectangle holds the sheet pixel (x, y)."""
+    def shape_at(self, x: int, y: int, include_removed: bool = True) -> Shape | None:
+        """The smallest shape whose rectangle holds the sheet pixel (x, y). Shapes the program removed count only
+        with `include_removed`; shapes the user removed always count."""
         if not self.analysis:
             return None
         best = None
         for s in self.analysis.shapes:
+            if s.removed and not include_removed and s.reason != "removed by you":
+                continue
             x0, y0, x1, y1 = s.box
             if x0 <= x <= x1 and y0 <= y <= y1:
                 if best is None or s.width * s.height < best.width * best.height:
@@ -182,6 +212,47 @@ class Session:
         sel = self.selected_shapes()
         return (max(x.width for x in sel), max(x.height for x in sel)) if sel else None
 
+    def can_split(self) -> bool:
+        return any(x.parts for x in self.selected_shapes())
+
+    def merge_selected(self) -> str:
+        """Merge the selected sprites into one sprite whose box covers them all (pieces of one effect)."""
+        sel = self.selected_shapes()
+        if len(sel) < 2:
+            self.message = "Select two or more pieces to merge."
+            return self.message
+        merged = merge_shapes(sel)
+        area = merged.box
+        self.merges = [m for m in self.merges if not _inside(m, area)] + [area]
+        self.splits = [x for x in self.splits if not _inside(x, area)]
+        for x in sel:
+            self.moves.pop(x.box, None)
+            self.toggled.discard(x.box)
+        self._replace_many(sel, merged)
+        self.selected = {merged.box}
+        self.regroup()
+        self.message = ""
+        return ""
+
+    def split_selected(self) -> str:
+        """Split selected merged sprites back into their pieces."""
+        merged = [x for x in self.selected_shapes() if x.parts]
+        if not merged:
+            self.message = "Select a merged sprite to split."
+            return self.message
+        new_sel: set[Box] = set()
+        for m in merged:
+            self.merges = [x for x in self.merges if not _inside(x, m.box)]
+            if m.box not in self.splits:
+                self.splits.append(m.box)
+            self.moves.pop(m.box, None)
+            self._replace(m, m.parts)
+            new_sel |= {p.box for p in m.parts}
+        self.selected = new_sel
+        self.regroup()
+        self.message = ""
+        return ""
+
     def group_selected(self) -> str:
         """Put all the selected sprites, whatever groups they are in, into one new size group whose box is the
         widest and tallest of them."""
@@ -209,3 +280,7 @@ class Session:
         self.groups.sort(key=lambda g: (g.shapes[0].row, g.shapes[0].box[0]))
         self.message = ""
         return ""
+
+
+def _inside(inner: Box, outer: Box) -> bool:
+    return outer[0] <= inner[0] and outer[1] <= inner[1] and inner[2] <= outer[2] and inner[3] <= outer[3]

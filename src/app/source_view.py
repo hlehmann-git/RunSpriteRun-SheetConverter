@@ -1,5 +1,5 @@
 """The source sheet on screen: the picture at a whole-number zoom, an outline and a frame number on every sprite
-(coloured by size group), a red cross on removed shapes. Clicks are reported; nothing is decided here."""
+(coloured by size group), a red cross on removed shapes (the program's own removals only when Show removed shapes is on). Clicks are reported; nothing is decided here."""
 from __future__ import annotations
 
 import numpy as np
@@ -21,6 +21,14 @@ def to_qimage(img) -> QImage:
     return q.copy()                                        # own the memory
 
 
+def by_user(shape) -> bool:
+    """A shape the user removed with a click (always shown, so another click brings it back)."""
+    return shape.reason == "removed by you"
+
+
+BIG_SHAPE = 128           # removed shapes wider or taller than any sprite get a dashed outline instead of a cross
+
+
 class SourceView(QWidget):
     shape_clicked = Signal(int, int, bool)       # sheet x, y, ctrl held
     pixel_picked = Signal(int, int)              # sheet x, y (while in pick mode)
@@ -32,6 +40,7 @@ class SourceView(QWidget):
         self.session: Session | None = None
         self.qimage: QImage | None = None
         self.zoom = 1
+        self.show_removed = False             # removed shapes (red cross) are hidden unless switched on
         self.picking = False
         self._press: QPoint | None = None
         self._drag: QRect | None = None
@@ -88,6 +97,12 @@ class SourceView(QWidget):
             if not r.adjusted(-3, -3, 3, 3).intersects(clip):
                 continue
             if shape.removed:
+                if not self.show_removed and not by_user(shape):
+                    continue                                       # left out by the program: hidden unless switched on
+                if shape.width > BIG_SHAPE or shape.height > BIG_SHAPE:     # a frame line or big picture: outline only,
+                    p.setPen(QPen(QColor(255, 60, 60, 150), 1, Qt.DashLine))  # no cross from corner to corner
+                    p.drawRect(r.adjusted(0, 0, -1, -1))
+                    continue
                 p.fillRect(r, QColor(220, 40, 40, 70))
                 p.setPen(QPen(QColor(0, 0, 0), 5))                     # a dark edge so the cross shows on any colour
                 p.drawLine(r.topLeft(), r.bottomRight())

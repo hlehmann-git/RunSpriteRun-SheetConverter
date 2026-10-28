@@ -1,4 +1,4 @@
-RunSpriteRun Sheet Converter (version 0.2.7)
+RunSpriteRun Sheet Converter (version 0.2.8)
 ============================================
 
 A separate program from RunSpriteRun. It turns two kinds of source into RunSpriteRun boxed sprite sheets (PNG):
@@ -19,6 +19,11 @@ SPRITE SHEET WINDOW
     select sprites; "Group the selected sprites into one box" puts them on one sheet whose box is the widest and tallest
     of them. Esc, or a click on empty space, clears the selection. Pick, then click a pixel, to choose the background
     or cell colour (Auto goes back to automatic).
+    Pieces whose boxes overlap are one sprite (an effect such as sparkles, whose pieces do not touch): they are
+    merged for you. For pieces that do not overlap, select them (drag a rectangle round them) and click "Merge into
+    one sprite box"; Split undoes it. Merges and splits are kept when you change a setting.
+    "Show removed shapes" (top of the window, off at first) shows what the program left out (text, palettes, pictures,
+    empty cells) with a red cross, so you can click one to bring it back. Shapes you removed yourself always show.
     A sheet saved by RunSpriteRun (or by this program) is recognised: each guide-line box is read as one sprite at
     the box size, empty boxes are skipped, and the text at the top and the colour bar underneath are left out. Picking
     a background or cell colour, or switching Cell colour Off, uses the normal search instead.
