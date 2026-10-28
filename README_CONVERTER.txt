@@ -1,4 +1,4 @@
-RunSpriteRun Sheet Converter (version 0.2.5)
+RunSpriteRun Sheet Converter (version 0.2.6)
 ============================================
 
 A separate program from RunSpriteRun. It turns two kinds of source into RunSpriteRun boxed sprite sheets (PNG):
@@ -25,7 +25,8 @@ ANIMATION WINDOW (GIF or WebP)
     is trimmed to the area that moves (switch). Pick, then click a pixel in a frame, to choose the background colour.
     Pixel size: every animation is checked for pixel art that was drawn bigger, by a whole number (2x, 3x ...) or by a
     fraction (such as 2.5x or 6.67x, where blocks are alternately 6 and 7 pixels wide). The block grid may start
-    part-way in, and a few pixels may be off. Over 128 pixels it is reduced for you; under 128 it is reduced when the
+    part-way in, and a few pixels may be off. When the animation has a transparent background, its outline is used
+    first: a lossy WebP smudges the colours but keeps the outline pixel-sharp. Over 128 pixels it is reduced for you; under 128 it is reduced when the
     match is strong (98% or more) and only suggested when it is weaker (90 to 98%). "Reduce to real pixel size" turns
     it on or off; the Pixel size list (Auto, the detected real size such as "72 x 72 (6.67x)", and 1x to 8x) sets it by
     hand. Each new pixel takes the most common colour of its block (for a fraction, from the middle of the block), so

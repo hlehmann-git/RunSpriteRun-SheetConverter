@@ -97,6 +97,9 @@ MIN_EVIDENCE = 10              # distinct grid lines with colour changes needed,
 FRAC_SHARE = 0.5               # a fractional grid must hold at least half of the colour changes
 FRAC_EXCESS = 0.25             # ... and this much more than an unrelated grid of the same number of lines would
 FRAC_LINES = 8                 # distinct lines with colour changes needed each way before a fractional size is guessed
+FRAC_NEAR = 0.15               # a grid explaining this share fewer changes than the best grid is not offered
+FRAC_STANDOUT = 0.15           # a grid just under FRAC_EXCESS still counts with at least this excess ...
+FRAC_LEAD = 3.0                # ... when it beats every unrelated grid size by this many times (smudged lossy colours)
 
 
 def _keys(rgba: np.ndarray) -> np.ndarray:
@@ -211,12 +214,27 @@ def detect_scale(frames: list[np.ndarray]) -> ScaleInfo:
         m = match_share(keys, factor, (ox, oy), bg)
         if m >= WEAK_MATCH:
             return ScaleInfo(factor, (ox, oy), m)
-    grid = _fractional_grid(cx, cy, w, h)
-    if grid is not None:
-        m = grid_match(keys, grid, bg)
-        if m >= WEAK_MATCH:
-            return ScaleInfo(1, (0, 0), m, grid)
+    tried = set()                                                     # the crisp outline first, then all colours;
+    for ex, ey in (_outline_changes(keys), (cx, cy)):                # the coarsest grid that reproduces the picture
+        if ex is None:                                                # (a coarser wrong grid loses detail and fails)
+            continue
+        for grid in _fractional_grids(ex, ey, w, h):
+            if grid in tried:
+                continue
+            tried.add(grid)
+            m = grid_match(keys, grid, bg)
+            if m >= WEAK_MATCH:
+                return ScaleInfo(1, (0, 0), m, grid)
     return ScaleInfo()
+
+
+def _outline_changes(keys: list[np.ndarray]) -> tuple[np.ndarray | None, np.ndarray | None]:
+    """Edge counts of the outline alone (solid against transparent). A lossy WebP smudges colours but keeps its
+    transparency exact, so the outline shows the real pixel grid best. (None, None) without transparency."""
+    if not any((k == TRANSPARENT).any() for k in keys):
+        return None, None
+    shapes = [(k != TRANSPARENT).astype(np.int8) for k in keys]
+    return _changes(shapes, 1), _changes(shapes, 0)
 
 
 def _grid_lines(length: int, cells: int) -> np.ndarray:
@@ -238,36 +256,43 @@ def _window(length: int, cells: int) -> np.ndarray:
     return mask
 
 
-def _cell_count(changes: np.ndarray, length: int) -> tuple[int, float] | None:
-    """The number of real pixels across one direction of a fractionally enlarged picture. Every grid of at least 1.5x
-    is scored by the share of colour changes on its lines, and by how much that beats an unrelated grid with as many
-    lines. Of the grids that clearly stand out, the coarsest that explains nearly as much as the best is chosen (a
-    finer grid can hold a coarser one's lines too). None when no grid stands out."""
+def _related(a: int, b: int) -> bool:
+    """Whether two cell counts are the same grid, or one is (about) a whole multiple of the other."""
+    lo, hi = sorted((a, b))
+    k = max(1, round(hi / lo))
+    return abs(hi - k * lo) <= k
+
+
+def _cell_counts(changes: np.ndarray, length: int) -> list[int]:
+    """The possible numbers of real pixels across one direction of a fractionally enlarged picture, coarsest first.
+    Every grid of at least 1.5x is scored by the share of colour changes on its lines, and by how much that beats an
+    unrelated grid with as many lines. The grids that clearly stand out, and explain nearly as many changes as the best
+    of them, are returned. When none does, a grid just under
+    the bar still counts if it beats every unrelated grid size by far, as happens when lossy compression smudges the
+    colours. Empty when no grid stands out."""
     total = float(changes.sum())
     if int((changes > 0).sum()) < FRAC_LINES:
-        return None                                                   # too few edges: many grids would fit by chance
-    found = []
+        return []                                                     # too few edges: many grids would fit by chance
+    scores = []
     for cells in range(MIN_FRAME, int(length / 1.5) + 1):
         mask = _window(length, cells)
         share = float(changes[mask].sum()) / total
-        excess = share - mask.sum() / max(1, length - 1)
-        if share >= FRAC_SHARE and excess >= FRAC_EXCESS:
-            found.append((cells, share))
-    if not found:
-        return None
-    best = max(sh for _c, sh in found)
-    return next((c, sh) for c, sh in found if sh >= best - 0.05)
+        scores.append((cells, share, share - mask.sum() / max(1, length - 1)))
+    found = [(c, sh) for c, sh, ex in scores if sh >= FRAC_SHARE and ex >= FRAC_EXCESS]
+    if found:
+        best = max(sh for _c, sh in found)
+        return [c for c, sh in found if sh >= best - FRAC_NEAR]     # not one that misses many of the edges
+    c, sh, ex = max(scores, key=lambda r: r[2])
+    rival = max((e for c2, _s, e in scores if not _related(c, c2)), default=0.0)
+    return [c] if sh >= FRAC_SHARE and ex >= FRAC_STANDOUT and ex >= FRAC_LEAD * max(rival, 1e-9) else []
 
 
-def _fractional_grid(cx: np.ndarray, cy: np.ndarray, w: int, h: int) -> tuple[int, int] | None:
-    """The real sprite size (cells across, cells down) of a picture enlarged by a fraction, or None."""
-    gx, gy = _cell_count(cx, w), _cell_count(cy, h)
-    if gx is None or gy is None:
-        return None
-    rx, ry = w / gx[0], h / gy[0]
-    if abs(rx - ry) > 0.15 * max(rx, ry):                            # both ways must be enlarged by about as much
-        return None
-    return gx[0], gy[0]
+def _fractional_grids(cx: np.ndarray, cy: np.ndarray, w: int, h: int) -> list[tuple[int, int]]:
+    """Possible real sprite sizes (cells across, cells down) of a picture enlarged by a fraction, coarsest first. Both
+    ways must be enlarged by about as much."""
+    pairs = [(gx, gy) for gx in _cell_counts(cx, w) for gy in _cell_counts(cy, h)
+             if abs(w / gx - h / gy) <= 0.15 * max(w / gx, h / gy)]
+    return sorted(pairs, key=lambda g: g[0] * g[1])
 
 
 def _snap(changes: np.ndarray, length: int, cells: int) -> np.ndarray:

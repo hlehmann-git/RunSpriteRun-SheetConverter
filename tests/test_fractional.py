@@ -92,3 +92,42 @@ def test_the_session_says_what_to_do():
     assert "Tick Reduce to real pixel size" in sess.problem_text()
     sess.set_scaling(True, 1)
     assert "Choose Auto in Pixel size" in sess.problem_text()
+
+
+def sprite(seed, transparent=True) -> Image.Image:
+    """A made-up 42 x 42 figure with busy shading (many small colour patches), on a transparent or plain background."""
+    rng = np.random.default_rng(seed)
+    pal = rng.integers(20, 235, (12, 3))
+    a = np.zeros((42, 42, 4), np.uint8)
+    a[..., :3], a[..., 3] = (240, 240, 240), 0 if transparent else 255
+    yy, xx = np.mgrid[:42, :42]
+    body = ((xx - 21) / 13.0) ** 2 + ((yy - 21) / 18.0) ** 2 <= 1
+    body |= (abs(xx - 21 + rng.integers(-3, 4)) < 4) & (yy > 30) & (yy < 41)       # legs
+    body |= (abs(yy - 16) < 3) & (xx > 4) & (xx < 38)                               # arms
+    shade = np.zeros((42, 42, 3), np.int64)
+    shade[:] = pal[0]
+    for _ in range(160):                                                            # patches of 1 to 4 pixels each way
+        x, y, w, h = *rng.integers(0, 42, 2), *rng.integers(1, 5, 2)
+        shade[y:y + h, x:x + w] = pal[rng.integers(0, 12)]
+    a[body, :3], a[body, 3] = shade[body], 255
+    return Image.fromarray(a)
+
+
+MARIO_LIKE = 200                                                         # 42 pixels shown as 200: a 4.76x enlargement
+
+
+@pytest.mark.parametrize("transparent, quality", [(True, 30), (False, 75)])
+def test_a_lossy_webp_enlarged_476_times_is_found(transparent, quality):
+    """Like a sprite saved from a web page: lossy compression smudges the colours, so few colour changes sit exactly
+    on the grid. The outline against transparency stays crisp (at quality 30 the colours alone show no grid at all);
+    without transparency, at milder compression, the grid still stands out from every other size."""
+    small = [sprite(s, transparent) for s in (1, 2, 3)]
+    big = [f.resize((MARIO_LIKE, MARIO_LIKE), Image.NEAREST) for f in small]
+    s = gif.read_gif(Image.open(io.BytesIO(webp_bytes(big, quality=quality, duration=80))), lossy=True)
+    assert s.scale.grid == (42, 42) and s.size == (42, 42) and not s.too_big and not s.error
+    assert s.scale.match >= gif.WEAK_MATCH and len(s.frames) == 3
+
+
+def test_a_lossy_one_to_one_sprite_is_left_alone():
+    s = gif.read_gif(Image.open(io.BytesIO(webp_bytes([sprite(4), sprite(5)], quality=75))), lossy=True)
+    assert not s.scale.found and s.size == (42, 42)
