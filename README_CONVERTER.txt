@@ -1,4 +1,4 @@
-RunSpriteRun Sheet Converter (version 0.2.7)
+RunSpriteRun Sheet Converter (version 0.2.8)
 ============================================
 
 A separate program from RunSpriteRun. It turns two kinds of source into RunSpriteRun boxed sprite sheets (PNG):
@@ -16,9 +16,16 @@ RUN FROM SOURCE (needs Python 3.12)
 
 SPRITE SHEET WINDOW
     File > Open Sheet (Ctrl+O). Click a shape to remove or restore it (red cross). Ctrl+click, or drag a rectangle, to
-    select sprites; "Group the selected sprites into one box" puts them on one sheet whose box is the widest and tallest
+    select sprites; "Group the selected Sprites into the same sized box" puts them on one sheet whose box is the widest and tallest
     of them. Esc, or a click on empty space, clears the selection. Pick, then click a pixel, to choose the background
     or cell colour (Auto goes back to automatic).
+    Pieces whose boxes overlap are one sprite (an effect such as sparkles, whose pieces do not touch): they are
+    merged for you. For pieces that do not overlap, select them (drag a rectangle round them) and click "Merge
+    selected into one sprite"; Split undoes it. Merges and splits are kept when you change a setting.
+    Removed shapes (text, palettes, frame lines, empty cells, and those you click away) disappear from the picture.
+    "Show removed shapes" (top of the window, off at first) shows them again with a red cross, so you can click one to
+    bring it back. Ctrl+Z undoes your last click that removed or restored a shape. When the window is short, the Adjust
+    panel scrolls.
     A sheet saved by RunSpriteRun (or by this program) is recognised: each guide-line box is read as one sprite at
     the box size, empty boxes are skipped, and the text at the top and the colour bar underneath are left out. Picking
     a background or cell colour, or switching Cell colour Off, uses the normal search instead.

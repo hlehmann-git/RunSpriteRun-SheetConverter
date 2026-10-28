@@ -43,10 +43,15 @@ class Swatch(QLabel):
             self.setStyleSheet(f"border: 1px solid #e6e8ee; border-radius: 3px; background: rgb({r},{g},{b});")
 
 
+GROUP_TEXT = "Group the selected Sprites into the same sized box"
+
+
 class AdjustPanel(QFrame):
     options_changed = Signal()
     pick_requested = Signal(str)          # "background" or "cell"
     group_requested = Signal()
+    merge_requested = Signal()
+    split_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -170,7 +175,7 @@ class AdjustPanel(QFrame):
                                   "as the widest and as tall as the tallest of them.")
         inner = QHBoxLayout(self.group_btn)
         inner.setContentsMargins(8, 2, 8, 2)
-        self.group_label = QLabel("Group the selected sprites into one box")
+        self.group_label = QLabel(GROUP_TEXT)
         self.group_label.setWordWrap(True)
         self.group_label.setAlignment(Qt.AlignCenter)
         self.group_label.setAttribute(Qt.WA_TransparentForMouseEvents)
@@ -180,6 +185,15 @@ class AdjustPanel(QFrame):
         expl.setObjectName("dim")
         expl.setWordWrap(True)
         bl.addWidget(expl)
+        mrow = QHBoxLayout()
+        self.merge_btn = QPushButton("Merge selected into one sprite")
+        self.merge_btn.setToolTip("The selected pieces become one sprite whose box covers them all (for an effect "
+                                  "such as sparkles whose pieces do not touch).")
+        self.split_btn = QPushButton("Split")
+        self.split_btn.setToolTip("Split a merged sprite back into its pieces.")
+        mrow.addWidget(self.merge_btn, 1)
+        mrow.addWidget(self.split_btn)
+        bl.addLayout(mrow)
         self.note = QLabel("")
         self.note.setObjectName("orange")
         self.note.setWordWrap(True)
@@ -198,6 +212,8 @@ class AdjustPanel(QFrame):
         self.cell_auto.clicked.connect(self._cell_auto)
         self.cell_off.toggled.connect(self._cell_off)
         self.group_btn.clicked.connect(self.group_requested)
+        self.merge_btn.clicked.connect(self.merge_requested)
+        self.split_btn.clicked.connect(self.split_requested)
         self.set_enabled_for_sheet(False)
 
     # ---- helpers ---------------------------------------------------------------------------------------------------
@@ -264,13 +280,14 @@ class AdjustPanel(QFrame):
         self.cell_swatch.set_key(None if off else cell)
         self.cell_text.setText("Off" if off else "None found" if cell is None else "#%02X%02X%02X" % rgb_of(cell))
 
-    def update_selection(self, count: int, max_size: tuple[int, int] | None = None) -> None:
+    def update_selection(self, count: int, max_size: tuple[int, int] | None = None, can_split: bool = False) -> None:
         on = count > 0
+        self.merge_btn.setEnabled(count > 1)
+        self.split_btn.setEnabled(can_split)
         self.selected_head.setText(f"Selected sprites: {count if on else 'none'}")
         self.group_btn.setEnabled(on)
-        self.group_label.setText(f"Group the {count} selected sprite{'s' if count != 1 else ''} into one box of "
-                                 f"{max_size[0]} x {max_size[1]}" if on and max_size
-                                 else "Group the selected sprites into one box")
+        self.group_label.setText(f"Group the {count} selected sprite{'s' if count != 1 else ''} into the same sized box "
+                                 f"({max_size[0]} x {max_size[1]})" if on and max_size else GROUP_TEXT)
         self.group_label.setStyleSheet("color: white;" if on else "color: #6a6e7c;")
 
     def show_note(self, text: str) -> None:

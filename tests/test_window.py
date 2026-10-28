@@ -73,7 +73,13 @@ def test_click_removes_a_shape_and_the_summary_follows(win):
     assert first.removed
     assert "5 frames of 48 x 84" in win.summary.text()
     QTest.mouseClick(win.view, Qt.LeftButton, Qt.NoModifier, centre(win, first))
+    assert first.removed                                    # painted out: a second click does nothing
+    QTest.keyClick(win, Qt.Key_Z, Qt.ControlModifier)       # Ctrl+Z brings it back
     assert not first.removed and "6 frames of 48 x 84" in win.summary.text()
+    QTest.mouseClick(win.view, Qt.LeftButton, Qt.NoModifier, centre(win, first))
+    win.show_removed.setChecked(True)                       # shown again with its cross: a click restores it
+    QTest.mouseClick(win.view, Qt.LeftButton, Qt.NoModifier, centre(win, first))
+    assert not first.removed
 
 
 def test_ctrl_click_selects_and_enables_the_group_button(win):
@@ -150,7 +156,7 @@ def test_group_button_puts_selected_sprites_in_one_box(win):
     QTest.mouseClick(win.view, Qt.LeftButton, Qt.ControlModifier, centre(win, a))
     QTest.mouseClick(win.view, Qt.LeftButton, Qt.ControlModifier, centre(win, b))
     assert win.panel.group_btn.isEnabled()
-    assert "Group the 2 selected sprites into one box of" in win.panel.group_label.text()
+    assert "Group the 2 selected sprites into the same sized box (" in win.panel.group_label.text()
     win.panel.group_btn.click()
     g = win.session.groups[win.session.group_of(a)]
     assert g is win.session.groups[win.session.group_of(b)] and g.count >= 2
@@ -212,5 +218,6 @@ def test_clicking_a_removed_shape_restores_it_and_keeps_the_selection(win):
     QTest.mouseClick(win.view, Qt.LeftButton, Qt.NoModifier, centre(win, third))      # removes it (a click on a sprite)
     assert third.removed
     assert len(win.session.selected) == 2
+    win.show_removed.setChecked(True)
     QTest.mouseClick(win.view, Qt.LeftButton, Qt.NoModifier, centre(win, third))
     assert not third.removed and len(win.session.selected) == 2

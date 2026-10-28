@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image
 from PySide6.QtCore import QEvent, QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QAction, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QAbstractButton, QAbstractSlider, QAbstractSpinBox, QApplication,
+from PySide6.QtWidgets import (QAbstractButton, QAbstractSlider, QAbstractSpinBox, QApplication, QCheckBox,
                                QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton,
                                QScrollArea, QTabBar, QVBoxLayout, QWidget)
 
@@ -96,10 +96,16 @@ class MainWindow(OutputMixin, QMainWindow):
         t = QLabel("Source sheet")
         t.setObjectName("head")
         self.title_label = t
-        self.hint = QLabel("Click a shape to remove or restore it. Ctrl+click or drag to select sprites.")
+        self.hint = QLabel("Click a sprite to remove it (Ctrl+Z brings it back). Ctrl+click or drag to select sprites.")
         self.hint.setObjectName("dim")
         head.addWidget(t)
         head.addStretch(1)
+        self.show_removed = QCheckBox("Show removed shapes")
+        self.show_removed.setToolTip("Removed shapes (text, palettes, frame lines, empty cells and those you click "
+                                     "away) are painted out of the picture. Switch this on to see them with a red "
+                                     "cross and click one to bring it back. Ctrl+Z undoes your last click.")
+        head.addWidget(self.show_removed)
+        head.addSpacing(12)
         head.addWidget(QLabel("Zoom"))
         self.zoom_out = QPushButton("-")
         self.zoom_in = QPushButton("+")
@@ -129,8 +135,14 @@ class MainWindow(OutputMixin, QMainWindow):
         top.addWidget(src, 3)
 
         self.panel = AdjustPanel()
-        self.panel.setMinimumWidth(470)
-        top.addWidget(self.panel, 2)
+        self.panel_scroll = QScrollArea()                   # a short window scrolls the panel instead of squeezing it
+        self.panel_scroll.setWidget(self.panel)
+        self.panel_scroll.setWidgetResizable(True)
+        self.panel_scroll.setFrameShape(QFrame.NoFrame)
+        self.panel_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.panel_scroll.setMinimumWidth(480)
+        self.panel_scroll.viewport().setAutoFillBackground(False)
+        top.addWidget(self.panel_scroll, 2)
 
         self.output = OutputPanel()
         outer.addWidget(self.output, 4)
@@ -140,6 +152,8 @@ class MainWindow(OutputMixin, QMainWindow):
         self._out_timer.timeout.connect(self._rebuild_output)
 
         self._build_menu()
+        self._undo = QShortcut(QKeySequence.Undo, self)          # Ctrl+Z: undo the last remove / restore click
+        self._undo.activated.connect(self.undo_click)
         self._escape = QShortcut(QKeySequence(Qt.Key_Escape), self)
         self._escape.setContext(Qt.WindowShortcut)
         self._escape.activated.connect(self.clear_selection)
@@ -153,6 +167,9 @@ class MainWindow(OutputMixin, QMainWindow):
         self.panel.options_changed.connect(self._options_changed)
         self.panel.pick_requested.connect(self._pick_requested)
         self.panel.group_requested.connect(self._group)
+        self.show_removed.toggled.connect(self._show_removed_changed)
+        self.panel.merge_requested.connect(lambda: self._selection_action("merge_selected"))
+        self.panel.split_requested.connect(lambda: self._selection_action("split_selected"))
         self.panel.cleanup.changed.connect(self._cleanup_changed)
         self.output.save_clicked.connect(self.save_now)
         self.output.browse_clicked.connect(self._browse)
@@ -292,7 +309,7 @@ class MainWindow(OutputMixin, QMainWindow):
         self.summary.setText(s.summary())
         self.panel.show_colours(s.analysis.background, s.analysis.cell_colour)
         self.title_label.setText(f"Source sheet: {s.path.name if s.path else ''}  ({s.image.width} x {s.image.height})")
-        self.panel.update_selection(len(s.selected), s.selection_max_size())
+        self.panel.update_selection(len(s.selected), s.selection_max_size(), s.can_split())
         self.panel.show_note(s.message)
         self.view.update()
         self._schedule_output()
@@ -306,7 +323,7 @@ class MainWindow(OutputMixin, QMainWindow):
         s = self.session
         if not s or not s.analysis:
             return
-        shape = s.shape_at(x, y)
+        shape = s.shape_at(x, y, include_removed=self.view.show_removed)    # hidden shapes cannot be clicked
         if shape is None:
             if not ctrl:
                 s.select([])
@@ -334,7 +351,7 @@ class MainWindow(OutputMixin, QMainWindow):
         self._pick_which = which
         self.view.set_picking(bool(which))
         self.hint.setText("Click a pixel on the sheet to choose the colour." if which else
-                          "Click a shape to remove or restore it. Ctrl+click or drag to select sprites.")
+                          "Click a sprite to remove it (Ctrl+Z brings it back). Ctrl+click or drag to select sprites.")
 
     def _pixel_picked(self, x: int, y: int) -> None:
         s = self.session
@@ -346,10 +363,25 @@ class MainWindow(OutputMixin, QMainWindow):
         which, key = self._pick_which, int(s.analysis.key[y, x])
         self._pick_which = ""
         self.view.set_picking(False)
-        self.hint.setText("Click a shape to remove or restore it. Ctrl+click or drag to select sprites.")
+        self.hint.setText("Click a sprite to remove it (Ctrl+Z brings it back). Ctrl+click or drag to select sprites.")
         self.panel.set_colour_choice(which, key)
 
     # ---- the selected sprites --------------------------------------------------------------------------------------
+    def undo_click(self) -> None:
+        if self.session and self.session.undo_toggle():
+            self._refresh()
+
+    def _show_removed_changed(self, on: bool) -> None:
+        self.view.show_removed = on
+        self.view.update()
+        if self.session:
+            self._refresh()
+
+    def _selection_action(self, name: str) -> None:
+        if self.session and self.session.analysis:
+            getattr(self.session, name)()
+            self._refresh()
+
     def _group(self) -> None:
         if self.session:
             self.session.group_selected()
