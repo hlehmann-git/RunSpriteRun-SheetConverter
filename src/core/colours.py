@@ -228,11 +228,15 @@ def clean_up(frames: list[np.ndarray], strength: str = DEFAULT_STRENGTH) -> Clea
     return CleanResult(out, int(len(values)), len(set(kept)))
 
 
-def clean_note(kind: str, before: int, after: int | None, strength: str | None) -> str:
-    """The line shown under the Clean up switch."""
-    if kind != "lossy":
-        return "Colours are exact in this file, so no clean-up is needed."
+def clean_note(lossy: bool, before: int, after: int | None, strength: str | None) -> str:
+    """The line shown under the Clean up / Reduce colours switch. A lossy WebP's colours are smudged by
+    compression; anything else has exact colours, so the wording (and the switch's own label) differs, but
+    both merge the same way, with the same strengths, to colours already in the picture."""
+    if lossy:
+        if after is None:
+            return (f"Lossy WebP: {before} colours, many of them smudged edges. Tick Clean up colours to merge "
+                    "them back to a small palette.")
+        return f"Lossy WebP: {before} colours, cleaned up to {after} ({strength})."
     if after is None:
-        return (f"Lossy WebP: {before} colours, many of them smudged edges. Tick Clean up colours to merge them "
-                "back to a small palette.")
-    return f"Lossy WebP: {before} colours, cleaned up to {after} ({strength})."
+        return f"{before} colours used. Tick Reduce colours to merge the ones closest in value."
+    return f"{before} colours, reduced to {after} ({strength})."

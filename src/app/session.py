@@ -68,7 +68,7 @@ class Session:
             self.colours_after = self.colours_before
 
     def colours_text(self) -> str:
-        return colours.clean_note("lossy" if self.lossy else "", self.colours_before,
+        return colours.clean_note(self.lossy, self.colours_before,
                                   self.colours_after if self.cleanup else None, self.cleanup)
 
     # ---- recompute -------------------------------------------------------------------------------------------------

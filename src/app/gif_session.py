@@ -60,7 +60,7 @@ class GifSession:
 
     def colours_text(self) -> str:
         sh = self.sheet
-        return colours.clean_note("lossy" if sh.lossy else "", sh.colours_before,
+        return colours.clean_note(sh.lossy, sh.colours_before,
                                   sh.colours_after if sh.cleanup else None, sh.cleanup)
 
     @property

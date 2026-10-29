@@ -133,9 +133,10 @@ def test_a_big_lossy_sheet_is_cleaned_quickly():
 
 
 def test_the_note_says_what_happened():
-    assert "cleaned up to 9 (Medium)" in colours.clean_note("lossy", 300, 9, "Medium")
-    assert "Tick Clean up colours" in colours.clean_note("lossy", 300, None, None)
-    assert "exact" in colours.clean_note("", 12, None, None)
+    assert "cleaned up to 9 (Medium)" in colours.clean_note(True, 300, 9, "Medium")
+    assert "Tick Clean up colours" in colours.clean_note(True, 300, None, None)
+    assert "Tick Reduce colours" in colours.clean_note(False, 12, None, None)
+    assert "reduced to 5 (Low)" in colours.clean_note(False, 12, 5, "Low")
 
 
 # ---- the sprite sheet session -----------------------------------------------------------------------------------------
@@ -155,6 +156,17 @@ def test_a_lossless_webp_sheet_is_not_touched(tmp_path):
     s = Session(Image.open(p), p)
     assert not s.lossy and s.cleanup is None and s.colours_before == 7
     assert np.array_equal(np.asarray(s.image), np.asarray(art()))
+    assert "Tick Reduce colours" in s.colours_text()
+
+
+def test_an_exact_colour_sheet_can_still_be_reduced_by_choice(tmp_path):
+    p = tmp_path / "sheet.png"
+    art().save(p)
+    s = Session(Image.open(p), p)
+    assert not s.lossy and s.cleanup is None and s.colours_before == 7      # off by default: nothing is smudged
+    s.set_cleanup("Low")
+    assert s.cleanup == "Low" and s.colours_after <= s.colours_before
+    assert "reduced to" in s.colours_text()
 
 
 # ---- animated WebP ----------------------------------------------------------------------------------------------------
@@ -217,14 +229,15 @@ def test_the_animation_window_opens_an_animated_webp(tmp_path, monkeypatch):
     w.deleteLater()
 
 
-def test_a_plain_png_has_the_clean_up_switch_greyed_out(tmp_path):
+def test_a_plain_png_is_offered_reduce_colours_unticked(tmp_path):
     from src.app.main_window import MainWindow
     p = tmp_path / "sheet.png"
     art().save(p)
     w = MainWindow()
     w.show()
     assert w.open_path(str(p))
-    assert not w.panel.cleanup.switch.isEnabled() and "exact" in w.panel.cleanup.note.text()
+    assert w.panel.cleanup.switch.isEnabled() and not w.panel.cleanup.switch.isChecked()
+    assert w.panel.cleanup.switch.text() == "Reduce colours"
     w.close()
     w.deleteLater()
 

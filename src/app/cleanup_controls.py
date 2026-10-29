@@ -1,5 +1,7 @@
-"""The Colours section shared by the sprite sheet window and the animation window: the Clean up colours switch, its
-strength and the line saying what it did. It only matters for a lossy WebP; for any other file it is greyed out."""
+"""The Colours section shared by the sprite sheet window and the animation window: the Clean up / Reduce colours
+switch, its strength and the line saying what it did. The same merge, at the same strengths, is offered for any
+file: a lossy WebP is offered it pre-ticked, as clean-up for its compression smudging; anything else is offered
+it unticked, as an optional way to reduce an already-exact palette."""
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
@@ -18,8 +20,6 @@ class CleanupControls(QWidget):
         lay.setSpacing(3)
         row = QHBoxLayout()
         self.switch = QCheckBox("Clean up colours")
-        self.switch.setToolTip("Merge the smudged colours of a lossy WebP back into a small palette. Only colours "
-                               "already in the picture are used.")
         row.addWidget(self.switch, 1)
         row.addWidget(QLabel("Strength"))
         self.strength = QComboBox()
@@ -42,21 +42,28 @@ class CleanupControls(QWidget):
         return self.strength.currentData() if self.switch.isChecked() else None
 
     def set_file(self, lossy: bool, strength: str | None, note: str) -> None:
-        """Show a newly opened file's state without sending `changed`."""
+        """Show a newly opened file's state without sending `changed`. Offered for any file: "Clean up colours"
+        for a lossy WebP (its smudged compression), "Reduce colours" for anything else (an already-exact
+        palette, merged down by choice)."""
         for w in (self.switch, self.strength):
             w.blockSignals(True)
+        self.switch.setText("Clean up colours" if lossy else "Reduce colours")
+        self.switch.setToolTip(
+            "Merge the smudged colours of a lossy WebP back into a small palette. Only colours already in the "
+            "picture are used." if lossy else
+            "Merge colours that are close in value into a smaller palette. Only colours already in the picture "
+            "are used.")
         self.switch.setChecked(bool(strength))
         if strength:
             self.strength.setCurrentIndex(self.strength.findData(strength))
         for w in (self.switch, self.strength):
             w.blockSignals(False)
-        self.switch.setEnabled(lossy)
-        self.strength.setEnabled(lossy and bool(strength))
+        self.strength.setEnabled(bool(strength))
         self.note.setText(note)
 
     def set_note(self, text: str) -> None:
         self.note.setText(text)
 
     def _emit(self, *_):
-        self.strength.setEnabled(self.switch.isEnabled() and self.switch.isChecked())
+        self.strength.setEnabled(self.switch.isChecked())
         self.changed.emit(self.value())
