@@ -1,0 +1,69 @@
+@echo off
+rem Builds the RunSpriteRun Sheet Converter Windows installer on this PC.
+rem Needs: the .venv folder set up (see docs/BUILDING.md) and Inno Setup 6 installed.
+setlocal
+cd /d "%~dp0"
+title Build the RunSpriteRun Sheet Converter installer
+
+set "PY=.venv\Scripts\python.exe"
+
+echo.
+echo ===== RunSpriteRun Sheet Converter installer build =====
+echo.
+
+if not exist "%PY%" (
+  echo The .venv folder was not found in this folder.
+  echo Set it up first: see step 4 in docs\BUILDING.md.
+  goto :fail
+)
+
+echo [1/5] Reading the version number...
+"%PY%" -c "from src.version import VERSION; print(VERSION)" > build_version.txt
+if errorlevel 1 goto :fail
+set /p VERSION=<build_version.txt
+del build_version.txt
+if "%VERSION%"=="" goto :fail
+echo       Version %VERSION%
+
+echo [2/5] Checking the build tools (exact versions, hash-checked)...
+"%PY%" -m pip install --quiet --require-hashes -r packaging\build-tools.txt
+if errorlevel 1 goto :fail
+
+echo [3/5] Packaging the program. This takes a few minutes...
+if exist build rmdir /s /q build
+if exist dist rmdir /s /q dist
+"%PY%" -m PyInstaller --noconfirm --distpath dist --workpath build packaging\SheetConverter.spec
+if errorlevel 1 goto :fail
+if not exist "dist\RunSpriteRunSheetConverter\RunSpriteRunSheetConverter.exe" goto :fail
+
+echo [4/5] Finding Inno Setup...
+set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+if not exist "%ISCC%" set "ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe"
+if not exist "%ISCC%" set "ISCC=%LocalAppData%\Programs\Inno Setup 6\ISCC.exe"
+if not exist "%ISCC%" (
+  echo       Inno Setup 6 was not found. Install it from jrsoftware.org, then run this again.
+  goto :fail
+)
+echo       Found %ISCC%
+
+echo [5/5] Building the installer...
+if exist dist_installer rmdir /s /q dist_installer
+"%ISCC%" "/DAppVersion=%VERSION%" packaging\SheetConverter.iss
+if errorlevel 1 goto :fail
+
+echo.
+echo ===== Done =====
+echo Your installer is in the dist_installer folder:
+echo   RunSpriteRunSheetConverter_Setup_v%VERSION%.exe
+echo.
+start "" explorer "%~dp0dist_installer"
+pause
+exit /b 0
+
+:fail
+echo.
+echo ===== The build stopped because of a problem =====
+echo Take a screenshot of this window, including the lines above, and send it to Claude.
+echo.
+pause
+exit /b 1

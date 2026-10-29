@@ -13,3 +13,9 @@ desktop.ini
 Converted/
 Converted_samples/
 tests/samples/*.png
+
+# Windows installer build (build_installer.bat), left for a developer to create locally
+build/
+dist/
+dist_installer/
+build_version.txt
